@@ -1,0 +1,136 @@
+[
+  {
+    "updatedAt": "2026-10-19T21:07:55.710Z",
+    "createdAt": "2026-10-19T18:45:47.539Z",
+    "id": "hDI40uwLgepqZbvf",
+    "name": "Error Handler - BDE PartnerBot",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "4af14d4f-9416-4a9b-8fbf-8351806b001f",
+        "name": "E1 - Error Trigger",
+        "type": "n8n-nodes-base.errorTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO error_log (workflow_name, node_name, error_message, execution_id, execution_url, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id;",
+          "options": {
+            "queryReplacement": "={{ [ $json.workflow.name, $json.execution.lastNodeExecuted || 'inconnu', ($json.execution.error && $json.execution.error.message) || 'n/a', String($json.execution.id || ''), $json.execution.url || '' ] }}"
+          }
+        },
+        "id": "cdb06c8c-f297-4908-9a80-08bed55d92ec",
+        "name": "E2 - PG Log Erreur",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          256,
+          0
+        ],
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=🚨 ERREUR WORKFLOW\nWorkflow : {{ $('E1 - Error Trigger').item.json.workflow.name }}\nNœud : {{ $('E1 - Error Trigger').item.json.execution.lastNodeExecuted }}\nErreur : {{ ($('E1 - Error Trigger').item.json.execution.error && $('E1 - Error Trigger').item.json.execution.error.message) || 'n/a' }}\nExécution : {{ $('E1 - Error Trigger').item.json.execution.url }}",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "id": "332fb481-1867-4e29-97f4-dc57d33f81ca",
+        "name": "E3 - TG Alerte Admin",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          512,
+          0
+        ],
+        "webhookId": "92b5ef2f-c1c1-4dbd-97c7-b05e3d7e2992",
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      }
+    ],
+    "connections": {
+      "E1 - Error Trigger": {
+        "main": [
+          [
+            {
+              "node": "E2 - PG Log Erreur",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "E2 - PG Log Erreur": {
+        "main": [
+          [
+            {
+              "node": "E3 - TG Alerte Admin",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "006c4dbb-ae7a-4642-807b-96d504a4f5d4",
+    "activeVersionId": "006c4dbb-ae7a-4642-807b-96d504a4f5d4",
+    "versionCounter": 2,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-10-19T18:45:47.545Z",
+        "createdAt": "2026-10-19T18:45:47.545Z",
+        "role": "workflow:owner",
+        "workflowId": "hDI40uwLgepqZbvf",
+        "projectId": "w7c99tVjukqkHylY",
+        "project": {
+          "updatedAt": "2026-06-15T15:21:45.928Z",
+          "createdAt": "2026-06-15T15:15:58.665Z",
+          "id": "w7c99tVjukqkHylY",
+          "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": "Version 006c4dbb",
+      "description": ""
+    }
+  }
+]
