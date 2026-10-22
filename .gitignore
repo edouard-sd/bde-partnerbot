@@ -1,0 +1,16 @@
+# Secrets
+.env
+*.env.local
+**/credentials*.json
+creds*.json
+
+# Sauvegardes et donnees locales
+backups/
+*.sql.bak
+backup_*.sql
+n8n_data/
+pgdata/
+
+# Systeme
+.DS_Store
+Thumbs.db
