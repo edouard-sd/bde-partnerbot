@@ -1,0 +1,66 @@
+﻿=====================================================================
+  BDE PARTNERBOT - DEMO - COMMANDES SQL (pgAdmin, base contacts_bde)
+  Coller une requete a la fois dans le Query Tool, puis F5
+=====================================================================
+
+---------------------------------------------------------------------
+ AVANT LA DEMO (hors chrono, 10 min avant)
+---------------------------------------------------------------------
+
+-- P1. Remise a zero du contact de demo #1
+UPDATE contacts SET statut='nouveau', mail_genere=NULL, mail_sujet=NULL,
+  date_premier_contact=NULL, date_mail_envoye=NULL, reponse_date=NULL,
+  reponse_body=NULL, nombre_relances=0, erreur_message=NULL,
+  date_derniere_relance=NULL, date_derniere_tentative=NULL
+WHERE id=1;
+
+-- P2. Verifier qu'AUCUN autre contact n'est 'nouveau' -> une seule ligne : id 1
+SELECT id, nom, statut FROM contacts WHERE statut='nouveau';
+
+-- P3. Verifier qu'AUCUN autre contact n'est eligible a une relance -> 0 ligne
+SELECT id, nom, email, statut FROM contacts
+WHERE statut IN ('mail_envoye','relance_envoyee') AND nombre_relances < 3;
+
+-- P4. Verifier que le Gmail perso (expediteur "inconnu") n'est PAS en base -> 0 ligne
+SELECT id, email FROM contacts WHERE email = 'TON.ADRESSE.PERSO@gmail.com';
+
+---------------------------------------------------------------------
+ PENDANT LA DEMO
+---------------------------------------------------------------------
+
+-- Apres A1bis : statut = en_attente_go
+SELECT id, nom, entreprise, statut FROM contacts WHERE id=1;
+
+-- Apres OK #1 : statut = mail_envoye
+SELECT id, nom, statut, date_mail_envoye, mail_sujet FROM contacts WHERE id=1;
+
+-- MODULE C : simuler 7 jours ecoules (AVANT de lancer C1)
+UPDATE contacts SET date_derniere_relance = NOW() - INTERVAL '7 days' WHERE id=1;
+
+-- Apres C1 : nombre_relances = 1, statut = relance_envoyee
+SELECT id, nom, statut, nombre_relances, date_derniere_relance FROM contacts WHERE id=1;
+
+-- MODULE D : reponse enregistree -> statut = reponse_recue
+SELECT id, nom, statut, reponse_date, reponse_body FROM contacts WHERE id=1;
+
+-- MODULE D : ticket cree par l'IA pour l'expediteur inconnu
+SELECT id, prospect_email, subject, status, created_at
+FROM support_tickets ORDER BY id DESC LIMIT 3;
+
+-- Robustesse : journal des erreurs (Error Handler)
+SELECT id, workflow_name, node_name, error_message, created_at
+FROM error_log ORDER BY id DESC LIMIT 3;
+
+---------------------------------------------------------------------
+ SI UN TRUC COINCE
+---------------------------------------------------------------------
+
+-- GO #1 ne repond pas -> verifier le statut
+SELECT id, statut FROM contacts WHERE id=1;
+
+-- Revenir a l'etat "brouillon a valider" pour refaire OK #1
+UPDATE contacts SET statut='mail_en_attente_groupe' WHERE id=1;
+
+-- C1 n'envoie rien -> rendre le contact eligible a une relance
+UPDATE contacts SET statut='mail_envoye', nombre_relances=0,
+  date_derniere_relance = NOW() - INTERVAL '7 days' WHERE id=1;
