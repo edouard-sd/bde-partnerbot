@@ -1,183 +1,185 @@
-{
-  "updatedAt": "2026-10-19T18:44:45.061Z",
-  "createdAt": "2026-10-19T18:42:25.711Z",
-  "id": "8FjPmS8BbJdc46Nd",
-  "name": "Sub-Groq-Copywriter",
-  "description": null,
-  "active": true,
-  "isArchived": false,
-  "nodes": [
-    {
-      "parameters": {
-        "workflowInputs": {
-          "values": [
-            {
-              "name": "id",
-              "type": "number"
-            },
-            {
-              "name": "email"
-            },
-            {
-              "name": "nom"
-            },
-            {
-              "name": "entreprise"
-            },
-            {
-              "name": "produit_interesse"
-            }
-          ]
-        }
-      },
-      "id": "a645b53f-5661-4edc-9de6-ed1ffffcf3e7",
-      "name": "S0 - Entrée Contact",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        -16,
-        -32
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const c = $input.first().json;\n\nconst userPrompt = `Rédige un mail de prospection B2B pour un partenariat / dotation avec un BDE étudiant.\n\nProspect : ${c.nom}\nEntreprise : ${c.entreprise}\nProduit / angle d'intérêt : ${c.produit_interesse}\n\nTon : pro, direct, chaleureux mais concis.\nFormat : HTML propre (balises p, strong, br), 150 à 200 mots.\nObjectif : décrocher un échange court pour parler partenariat / dotation.\n\nTermine TOUJOURS le mail par exactement cette signature, sans rien ajouter après et sans la modifier :\n<p>Cordialement,</p>\n<p>L'équipe Partenariats - Liste BDE ESSEC</p>\nN'utilise JAMAIS de placeholder comme 'Votre prénom et nom' ou '[Nom]'.\n\nRéponds UNIQUEMENT avec le HTML du mail, sans balise html ni body, sans commentaire.`;\n\nreturn [{\n  json: {\n    ...c,\n    groq_body: {\n      model: 'openai/gpt-oss-120b',\n      reasoning_effort: 'low',\n      messages: [\n        {\n          role: 'system',\n          content: 'Tu es expert copywriting B2B, tu écris des mails de prospection pro en HTML propre'\n        },\n        {\n          role: 'user',\n          content: userPrompt\n        }\n      ],\n      temperature: 0.7,\n      max_tokens: 2000\n    }\n  }\n}];"
-      },
-      "id": "94860f29-05e9-45a4-aa4b-00c63f43c0ea",
-      "name": "S1 - Code Build Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        240,
-        -32
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.groq.com/openai/v1/chat/completions",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
+[
+  {
+    "updatedAt": "2026-10-19T18:44:45.061Z",
+    "createdAt": "2026-10-19T18:42:25.711Z",
+    "id": "8FjPmS8BbJdc46Nd",
+    "name": "Sub-Groq-Copywriter",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "id",
+                "type": "number"
+              },
+              {
+                "name": "email"
+              },
+              {
+                "name": "nom"
+              },
+              {
+                "name": "entreprise"
+              },
+              {
+                "name": "produit_interesse"
+              }
+            ]
+          }
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.groq_body) }}",
-        "options": {
-          "timeout": 30000
+        "id": "a645b53f-5661-4edc-9de6-ed1ffffcf3e7",
+        "name": "S0 - Entrée Contact",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          -16,
+          -32
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const c = $input.first().json;\n\nconst userPrompt = `Rédige un mail de prospection B2B pour un partenariat / dotation avec un BDE étudiant.\n\nProspect : ${c.nom}\nEntreprise : ${c.entreprise}\nProduit / angle d'intérêt : ${c.produit_interesse}\n\nTon : pro, direct, chaleureux mais concis.\nFormat : HTML propre (balises p, strong, br), 150 à 200 mots.\nObjectif : décrocher un échange court pour parler partenariat / dotation.\n\nTermine TOUJOURS le mail par exactement cette signature, sans rien ajouter après et sans la modifier :\n<p>Cordialement,</p>\n<p>L'équipe Partenariats - Liste BDE ESSEC</p>\nN'utilise JAMAIS de placeholder comme 'Votre prénom et nom' ou '[Nom]'.\n\nRéponds UNIQUEMENT avec le HTML du mail, sans balise html ni body, sans commentaire.`;\n\nreturn [{\n  json: {\n    ...c,\n    groq_body: {\n      model: 'openai/gpt-oss-120b',\n      reasoning_effort: 'low',\n      messages: [\n        {\n          role: 'system',\n          content: 'Tu es expert copywriting B2B, tu écris des mails de prospection pro en HTML propre'\n        },\n        {\n          role: 'user',\n          content: userPrompt\n        }\n      ],\n      temperature: 0.7,\n      max_tokens: 2000\n    }\n  }\n}];"
+        },
+        "id": "94860f29-05e9-45a4-aa4b-00c63f43c0ea",
+        "name": "S1 - Code Build Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          240,
+          -32
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.groq.com/openai/v1/chat/completions",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.groq_body) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "dc45afe6-0ab4-48df-a309-ccee453891e2",
+        "name": "S2 - Groq Rédaction Mail",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          496,
+          -32
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "RWkmbnavwTKWq86T",
+            "name": "Header Auth account"
+          }
         }
       },
-      "id": "dc45afe6-0ab4-48df-a309-ccee453891e2",
-      "name": "S2 - Groq Rédaction Mail",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        496,
-        -32
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000,
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "RWkmbnavwTKWq86T",
-          "name": "Header Auth account"
+      {
+        "parameters": {
+          "jsCode": "const resp = $input.first().json;\nconst contact = $('S0 - Entrée Contact').first().json;\n\nif (resp && resp.error) {\n  throw new Error('Erreur Groq : ' + JSON.stringify(resp.error));\n}\nif (!resp || !resp.choices || !resp.choices[0] || !resp.choices[0].message) {\n  throw new Error('Réponse Groq invalide : ' + JSON.stringify(resp).slice(0, 500));\n}\n\n// Nettoie d'éventuelles balises ```html renvoyées par le modèle\nlet mail_html = (resp.choices[0].message.content || '').trim()\n  .replace(/^```(?:html)?\\s*/i, '')\n  .replace(/```\\s*$/, '')\n  .trim();\n\nreturn [{\n  json: {\n    id: contact.id,\n    email: contact.email,\n    nom: contact.nom,\n    entreprise: contact.entreprise,\n    produit_interesse: contact.produit_interesse,\n    mail_genere: mail_html,\n    mail_sujet: `${contact.nom}, proposition de partenariat`\n  }\n}];"
+        },
+        "id": "03d600bc-3f3a-4b6f-a93a-0cb100982e34",
+        "name": "S3 - Code Extraire HTML",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          752,
+          -32
+        ]
+      }
+    ],
+    "connections": {
+      "S0 - Entrée Contact": {
+        "main": [
+          [
+            {
+              "node": "S1 - Code Build Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "S1 - Code Build Prompt": {
+        "main": [
+          [
+            {
+              "node": "S2 - Groq Rédaction Mail",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "S2 - Groq Rédaction Mail": {
+        "main": [
+          [
+            {
+              "node": "S3 - Code Extraire HTML",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    },
+    "staticData": null,
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "fe0d7744-1db3-4318-84a4-c5914493ae19",
+    "activeVersionId": "fe0d7744-1db3-4318-84a4-c5914493ae19",
+    "versionCounter": 2,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-10-19T18:42:25.745Z",
+        "createdAt": "2026-10-19T18:42:25.745Z",
+        "role": "workflow:owner",
+        "workflowId": "8FjPmS8BbJdc46Nd",
+        "projectId": "w7c99tVjukqkHylY",
+        "project": {
+          "updatedAt": "2026-06-15T15:21:45.928Z",
+          "createdAt": "2026-06-15T15:15:58.665Z",
+          "id": "w7c99tVjukqkHylY",
+          "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
         }
       }
-    },
-    {
-      "parameters": {
-        "jsCode": "const resp = $input.first().json;\nconst contact = $('S0 - Entrée Contact').first().json;\n\nif (resp && resp.error) {\n  throw new Error('Erreur Groq : ' + JSON.stringify(resp.error));\n}\nif (!resp || !resp.choices || !resp.choices[0] || !resp.choices[0].message) {\n  throw new Error('Réponse Groq invalide : ' + JSON.stringify(resp).slice(0, 500));\n}\n\n// Nettoie d'éventuelles balises ```html renvoyées par le modèle\nlet mail_html = (resp.choices[0].message.content || '').trim()\n  .replace(/^```(?:html)?\\s*/i, '')\n  .replace(/```\\s*$/, '')\n  .trim();\n\nreturn [{\n  json: {\n    id: contact.id,\n    email: contact.email,\n    nom: contact.nom,\n    entreprise: contact.entreprise,\n    produit_interesse: contact.produit_interesse,\n    mail_genere: mail_html,\n    mail_sujet: `${contact.nom}, proposition de partenariat`\n  }\n}];"
-      },
-      "id": "03d600bc-3f3a-4b6f-a93a-0cb100982e34",
-      "name": "S3 - Code Extraire HTML",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        752,
-        -32
-      ]
+    ],
+    "versionMetadata": {
+      "name": "Version fe0d7744",
+      "description": ""
     }
-  ],
-  "connections": {
-    "S0 - Entrée Contact": {
-      "main": [
-        [
-          {
-            "node": "S1 - Code Build Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "S1 - Code Build Prompt": {
-      "main": [
-        [
-          {
-            "node": "S2 - Groq Rédaction Mail",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "S2 - Groq Rédaction Mail": {
-      "main": [
-        [
-          {
-            "node": "S3 - Code Extraire HTML",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": false
-  },
-  "staticData": null,
-  "meta": null,
-  "nodeGroups": [],
-  "pinData": {},
-  "versionId": "fe0d7744-1db3-4318-84a4-c5914493ae19",
-  "activeVersionId": "fe0d7744-1db3-4318-84a4-c5914493ae19",
-  "versionCounter": 2,
-  "triggerCount": 0,
-  "sourceWorkflowId": null,
-  "tags": [],
-  "shared": [
-    {
-      "updatedAt": "2026-10-19T18:42:25.745Z",
-      "createdAt": "2026-10-19T18:42:25.745Z",
-      "role": "workflow:owner",
-      "workflowId": "8FjPmS8BbJdc46Nd",
-      "projectId": "w7c99tVjukqkHylY",
-      "project": {
-        "updatedAt": "2026-06-15T15:21:45.928Z",
-        "createdAt": "2026-06-15T15:15:58.665Z",
-        "id": "w7c99tVjukqkHylY",
-        "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
-        "type": "personal",
-        "icon": null,
-        "description": null,
-        "customTelemetryTags": [],
-        "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
-      }
-    }
-  ],
-  "versionMetadata": {
-    "name": "Version fe0d7744",
-    "description": ""
   }
-}
+]
