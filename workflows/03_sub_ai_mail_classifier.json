@@ -1,72 +1,235 @@
-{
- "id": "DWZe22zpvGRMiwdM",
- "name": "Sub-AI-Mail-Classifier",
- "nodes": [
+[
   {
-   "parameters": {"inputSource": "workflowInputs", "workflowInputs": {"values": [{"name": "from_header", "type": "string"}, {"name": "prospect_email", "type": "string"}, {"name": "subject", "type": "string"}, {"name": "body", "type": "string"}]}},
-   "id": "3588febe-fe7b-42f3-8d43-901c2744f28d",
-   "name": "K0 - Entrée Mail",
-   "type": "n8n-nodes-base.executeWorkflowTrigger",
-   "typeVersion": 1.1,
-   "position": [0, 0]
-  },
-  {
-   "parameters": {
-    "promptType": "define",
-    "text": "=Expéditeur : {{ $json.from_header || $json.prospect_email || 'inconnu' }}\nSujet : {{ $json.subject || '(sans sujet)' }}\nCorps :\n{{ ($json.body || '(vide)').slice(0, 4000) }}",
-    "hasOutputParser": true,
-    "messages": {"messageValues": [{"type": "SystemMessagePromptTemplate", "message": "Tu es l'assistant de tri de la boîte mail de l'équipe Partenariats de la Liste BDE ESSEC (association étudiante).\nTa mission : décider si un mail entrant mérite d'être traité par l'équipe.\n\nPERTINENT (pertinent = true) :\n- proposition ou réponse concernant un partenariat, sponsoring, dotation, mécénat, collaboration avec une marque ou une entreprise\n- demande d'information sur le BDE, ses événements, sa liste, sa visibilité\n- organisation d'un événement, d'un échange ou d'un rendez-vous avec l'équipe\n- tout message écrit par une vraie personne qui s'adresse au BDE\n\nNON PERTINENT (pertinent = false) :\n- newsletters, publicités, promotions de masse\n- notifications automatiques (Google, réseaux sociaux, outils SaaS, factures, sécurité de compte)\n- spam, phishing, arnaques\n- messages sans aucun rapport avec le BDE\n\nEn cas de doute, réponds pertinent = true : il vaut mieux un ticket de trop qu'un partenaire perdu.\nLa raison doit être une phrase courte en français."}]}
-   },
-   "id": "b822d5fa-c227-47fd-8bdc-4dc60abb5a74",
-   "name": "K1 - LLM Chain Classification",
-   "type": "@n8n/n8n-nodes-langchain.chainLlm",
-   "typeVersion": 1.5,
-   "position": [280, 0],
-   "retryOnFail": true,
-   "maxTries": 3,
-   "waitBetweenTries": 2000,
-   "onError": "continueErrorOutput"
-  },
-  {
-   "parameters": {"model": "openai/gpt-oss-20b", "options": {"temperature": 0.1, "maxTokensToSample": 1000}},
-   "id": "cedd762e-241e-4dac-b195-ef7140eee6dc",
-   "name": "K1a - Groq Chat Model",
-   "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
-   "typeVersion": 1,
-   "position": [200, 220]
-  },
-  {
-   "parameters": {"schemaType": "manual", "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"pertinent\": {\"type\": \"boolean\", \"description\": \"true si le mail concerne le BDE ou un partenariat\"},\n    \"categorie\": {\"type\": \"string\", \"enum\": [\"partenariat\", \"sponsoring\", \"evenement\", \"question_bde\", \"autre_pertinent\", \"newsletter\", \"publicite\", \"notification\", \"spam\", \"hors_sujet\"]},\n    \"raison\": {\"type\": \"string\", \"description\": \"phrase courte en français\"}\n  },\n  \"required\": [\"pertinent\", \"categorie\", \"raison\"]\n}"},
-   "id": "fb6ea9fc-5c56-4b74-b471-f68d3fd63fec",
-   "name": "K1b - Structured Output Parser",
-   "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-   "typeVersion": 1.2,
-   "position": [400, 220]
-  },
-  {
-   "parameters": {"jsCode": "// Sortie validée par le Structured Output Parser\nconst o = $input.first().json.output || {};\nconst mail = $('K0 - Entrée Mail').first().json;\nreturn [{\n  json: {\n    pertinent: o.pertinent === true,\n    categorie: String(o.categorie || 'non_classe'),\n    raison: String(o.raison || ''),\n    prospect_email: mail.prospect_email,\n    subject: mail.subject,\n    validated: true\n  }\n}];"},
-   "id": "fed57a10-6816-423e-84a6-a761ff2f6f02",
-   "name": "K2 - Code Verdict Validé",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [640, -80]
-  },
-  {
-   "parameters": {"jsCode": "// Fallback : IA indisponible ou sortie non conforme au schéma -> ticket par précaution (fail-open)\nconst mail = $('K0 - Entrée Mail').first().json;\nreturn [{\n  json: {\n    pertinent: true,\n    categorie: 'non_classe',\n    raison: 'Classification IA impossible, ticket créé par précaution',\n    prospect_email: mail.prospect_email,\n    subject: mail.subject,\n    validated: false\n  }\n}];"},
-   "id": "382a5e4a-ddf7-4b51-9d89-e5138a9e11e0",
-   "name": "K2-Fallback - Ticket par précaution",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [640, 120]
+    "updatedAt": "2026-10-22T13:02:56.202Z",
+    "createdAt": "2026-10-20T13:27:05.329Z",
+    "id": "DWZe22zpvGRMiwdM",
+    "name": "Sub-AI-Mail-Classifier",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "from_header"
+              },
+              {
+                "name": "prospect_email"
+              },
+              {
+                "name": "subject"
+              },
+              {
+                "name": "body"
+              }
+            ]
+          }
+        },
+        "id": "3588febe-fe7b-42f3-8d43-901c2744f28d",
+        "name": "K0 - Entrée Mail",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=Expéditeur : {{ $json.from_header || $json.prospect_email || 'inconnu' }}\nSujet : {{ $json.subject || '(sans sujet)' }}\nCorps :\n{{ ($json.body || '(vide)').slice(0, 4000) }}",
+          "hasOutputParser": true,
+          "messages": {
+            "messageValues": [
+              {
+                "message": "Tu es l'assistant de tri de la boîte mail de l'équipe Partenariats de la Liste BDE ESSEC (association étudiante).\nTa mission : décider si un mail entrant mérite d'être traité par l'équipe.\n\nPERTINENT (pertinent = true) :\n- proposition ou réponse concernant un partenariat, sponsoring, dotation, mécénat, collaboration avec une marque ou une entreprise\n- demande d'information sur le BDE, ses événements, sa liste, sa visibilité\n- organisation d'un événement, d'un échange ou d'un rendez-vous avec l'équipe\n- tout message écrit par une vraie personne qui s'adresse au BDE\n\nNON PERTINENT (pertinent = false) :\n- newsletters, publicités, promotions de masse\n- notifications automatiques (Google, réseaux sociaux, outils SaaS, factures, sécurité de compte)\n- spam, phishing, arnaques\n- messages sans aucun rapport avec le BDE\n\nEn cas de doute, réponds pertinent = true : il vaut mieux un ticket de trop qu'un partenaire perdu.\nLa raison doit être une phrase courte en français."
+              }
+            ]
+          }
+        },
+        "id": "b822d5fa-c227-47fd-8bdc-4dc60abb5a74",
+        "name": "K1 - LLM Chain Classification",
+        "type": "@n8n/n8n-nodes-langchain.chainLlm",
+        "typeVersion": 1.5,
+        "position": [
+          288,
+          0
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "model": "openai/gpt-oss-20b",
+          "options": {
+            "maxTokensToSample": 1000,
+            "temperature": 0.1
+          }
+        },
+        "id": "cedd762e-241e-4dac-b195-ef7140eee6dc",
+        "name": "K1a - Groq Chat Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+        "typeVersion": 1,
+        "position": [
+          208,
+          224
+        ],
+        "credentials": {
+          "groqApi": {
+            "id": "Iez8HZw7Yc2vnYsX",
+            "name": "Groq account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "schemaType": "manual",
+          "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"pertinent\": {\"type\": \"boolean\", \"description\": \"true si le mail concerne le BDE ou un partenariat\"},\n    \"categorie\": {\"type\": \"string\", \"enum\": [\"partenariat\", \"sponsoring\", \"evenement\", \"question_bde\", \"autre_pertinent\", \"newsletter\", \"publicite\", \"notification\", \"spam\", \"hors_sujet\"]},\n    \"raison\": {\"type\": \"string\", \"description\": \"phrase courte en français\"}\n  },\n  \"required\": [\"pertinent\", \"categorie\", \"raison\"]\n}"
+        },
+        "id": "fb6ea9fc-5c56-4b74-b471-f68d3fd63fec",
+        "name": "K1b - Structured Output Parser",
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.2,
+        "position": [
+          400,
+          224
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Sortie validée par le Structured Output Parser\nconst o = $input.first().json.output || {};\nconst mail = $('K0 - Entrée Mail').first().json;\nreturn [{\n  json: {\n    pertinent: o.pertinent === true,\n    categorie: String(o.categorie || 'non_classe'),\n    raison: String(o.raison || ''),\n    prospect_email: mail.prospect_email,\n    subject: mail.subject,\n    validated: true\n  }\n}];"
+        },
+        "id": "fed57a10-6816-423e-84a6-a761ff2f6f02",
+        "name": "K2 - Code Verdict Validé",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          640,
+          -80
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Fallback : IA indisponible ou sortie non conforme au schéma -> ticket par précaution (fail-open)\nconst mail = $('K0 - Entrée Mail').first().json;\nreturn [{\n  json: {\n    pertinent: true,\n    categorie: 'non_classe',\n    raison: 'Classification IA impossible, ticket créé par précaution',\n    prospect_email: mail.prospect_email,\n    subject: mail.subject,\n    validated: false\n  }\n}];"
+        },
+        "id": "382a5e4a-ddf7-4b51-9d89-e5138a9e11e0",
+        "name": "K2-Fallback - Ticket par précaution",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          640,
+          128
+        ]
+      }
+    ],
+    "connections": {
+      "K0 - Entrée Mail": {
+        "main": [
+          [
+            {
+              "node": "K1 - LLM Chain Classification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "K1a - Groq Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "K1 - LLM Chain Classification",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "K1b - Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "K1 - LLM Chain Classification",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "K1 - LLM Chain Classification": {
+        "main": [
+          [
+            {
+              "node": "K2 - Code Verdict Validé",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "K2-Fallback - Ticket par précaution",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "callerPolicy": "workflowsFromSameOwner",
+      "binaryMode": "separate"
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {
+      "K0 - Entrée Mail": [
+        {
+          "json": {
+            "from_header": "Marie Durand <marie.durand@redbull.com>",
+            "prospect_email": "marie.durand@redbull.com",
+            "subject": "Partenariat soirée d'intégration",
+            "body": "Bonjour, nous avons vu votre liste BDE et serions intéressés par une dotation de boissons pour votre soirée d'intégration. Pouvons-nous en discuter ? Marie"
+          }
+        }
+      ]
+    },
+    "versionId": "e778d3a7-92f7-468b-8825-17b5372b0537",
+    "activeVersionId": "e778d3a7-92f7-468b-8825-17b5372b0537",
+    "versionCounter": 3,
+    "triggerCount": 0,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-10-20T13:27:05.338Z",
+        "createdAt": "2026-10-20T13:27:05.338Z",
+        "role": "workflow:owner",
+        "workflowId": "DWZe22zpvGRMiwdM",
+        "projectId": "w7c99tVjukqkHylY",
+        "project": {
+          "updatedAt": "2026-06-15T15:21:45.928Z",
+          "createdAt": "2026-06-15T15:15:58.665Z",
+          "id": "w7c99tVjukqkHylY",
+          "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": "Version e778d3a7",
+      "description": ""
+    }
   }
- ],
- "connections": {
-  "K0 - Entrée Mail": {"main": [[{"node": "K1 - LLM Chain Classification", "type": "main", "index": 0}]]},
-  "K1a - Groq Chat Model": {"ai_languageModel": [[{"node": "K1 - LLM Chain Classification", "type": "ai_languageModel", "index": 0}]]},
-  "K1b - Structured Output Parser": {"ai_outputParser": [[{"node": "K1 - LLM Chain Classification", "type": "ai_outputParser", "index": 0}]]},
-  "K1 - LLM Chain Classification": {"main": [[{"node": "K2 - Code Verdict Validé", "type": "main", "index": 0}], [{"node": "K2-Fallback - Ticket par précaution", "type": "main", "index": 0}]]}
- },
- "settings": {"executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner"},
- "pinData": {"K0 - Entrée Mail": [{"from_header": "Marie Durand <marie.durand@redbull.com>", "prospect_email": "marie.durand@redbull.com", "subject": "Partenariat soirée d'intégration", "body": "Bonjour, nous avons vu votre liste BDE et serions intéressés par une dotation de boissons pour votre soirée d'intégration. Pouvons-nous en discuter ? Marie"}]},
- "active": false
-}
+]
