@@ -1,0 +1,67 @@
+# BDE PartnerBot - stack self-hosted
+# Usage : cp .env.example .env  (remplir les valeurs)  puis  docker compose up -d
+
+services:
+  postgres-bde:
+    image: postgres:15.18
+    container_name: postgres-bde
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Execute uniquement si le volume est vide (clone neuf) : cree les tables + un contact de demo
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.25.7
+    container_name: n8n
+    restart: unless-stopped
+    depends_on:
+      postgres-bde:
+        condition: service_healthy
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: ${N8N_HOST}
+      N8N_PROTOCOL: ${N8N_PROTOCOL}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_EDITOR_BASE_URL: ${WEBHOOK_URL}
+      GENERIC_TIMEZONE: Europe/Paris
+      TZ: Europe/Paris
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+
+  pgadmin:
+    image: dpage/pgadmin4:9.16
+    container_name: pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres-bde:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "127.0.0.1:5050:80"
+
+volumes:
+  n8n_data:
+    name: n8n_data
+  pgdata:
+    name: bde_pgdata
+  pgadmin_data:
+    name: bde_pgadmin_data
