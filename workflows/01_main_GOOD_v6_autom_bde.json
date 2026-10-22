@@ -1,6 +1,6 @@
 [
   {
-    "updatedAt": "2026-10-22T12:45:51.608Z",
+    "updatedAt": "2026-10-22T13:21:01.248Z",
     "createdAt": "2026-06-27T08:44:51.152Z",
     "id": "R86QPwAkWDQnoUFR",
     "name": "GOOD_v6_autom_bde",
@@ -445,9 +445,9 @@
       {
         "parameters": {
           "operation": "executeQuery",
-          "query": "UPDATE contacts SET statut='relance_prevue', erreur_message=$$ {{ $json.error }} $$, date_derniere_tentative=NOW() WHERE id={{ $('B-OK-a - PG Get Mail Validé').first().json.id }};\n",
+          "query": "UPDATE contacts SET erreur_message = $1, date_derniere_tentative = NOW() WHERE id = $2;",
           "options": {
-            "queryReplacement": "="
+            "queryReplacement": "={{ [ JSON.stringify($json.error), $('B-OK-a - PG Get Mail Validé').first().json.id ] }}"
           }
         },
         "id": "f59ee8e4-7719-45ca-92e7-44d9971adec6",
@@ -471,7 +471,7 @@
       {
         "parameters": {
           "chatId": "-1004453819959",
-          "text": "=⚠️ Échec envoi {{$('B-OK-a - PG Get Mail Validé').first().json.nom}}, sera réessayé",
+          "text": "=⚠️ Échec envoi à {{ $('B-OK-a - PG Get Mail Validé').first().json.nom }}, retapez OK #{{ $('B-OK-a - PG Get Mail Validé').first().json.id }} après correction",
           "additionalFields": {
             "appendAttribution": false,
             "parse_mode": "Markdown"
@@ -1798,9 +1798,9 @@
     },
     "nodeGroups": [],
     "pinData": {},
-    "versionId": "b7f4813c-6b71-4dd5-997f-ed798ffeaff8",
-    "activeVersionId": "b7f4813c-6b71-4dd5-997f-ed798ffeaff8",
-    "versionCounter": 138,
+    "versionId": "1a91b1a5-e02f-4955-b2e2-00504f617521",
+    "activeVersionId": "1a91b1a5-e02f-4955-b2e2-00504f617521",
+    "versionCounter": 141,
     "triggerCount": 4,
     "sourceWorkflowId": null,
     "tags": [],
@@ -1825,7 +1825,7 @@
       }
     ],
     "versionMetadata": {
-      "name": "Version b7f4813c",
+      "name": "Version 1a91b1a5",
       "description": ""
     }
   }
