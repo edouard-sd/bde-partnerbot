@@ -41,7 +41,10 @@
             "name": "Postgres-BDE"
           }
         },
-        "continueOnFail": true
+        "continueOnFail": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
       },
       {
         "parameters": {
@@ -66,7 +69,10 @@
             "name": "Telegram account 2"
           }
         },
-        "continueOnFail": true
+        "continueOnFail": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000
       }
     ],
     "connections": {
@@ -102,9 +108,9 @@
     "meta": null,
     "nodeGroups": [],
     "pinData": {},
-    "versionId": "006c4dbb-ae7a-4642-807b-96d504a4f5d4",
-    "activeVersionId": "006c4dbb-ae7a-4642-807b-96d504a4f5d4",
-    "versionCounter": 2,
+    "versionId": "df0448be-a07c-4dbe-ac9a-da4e33e1b62a",
+    "activeVersionId": "df0448be-a07c-4dbe-ac9a-da4e33e1b62a",
+    "versionCounter": 3,
     "triggerCount": 0,
     "sourceWorkflowId": null,
     "tags": [],

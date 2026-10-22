@@ -1,1683 +1,1832 @@
-{
-  "updatedAt": "2026-10-21T16:53:31.271Z",
-  "createdAt": "2026-06-27T08:44:51.152Z",
-  "id": "R86QPwAkWDQnoUFR",
-  "name": "GOOD_v6_autom_bde",
-  "description": null,
-  "active": true,
-  "isArchived": false,
-  "nodes": [
-    {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "cronExpression",
-              "expression": "0 9 * * *"
-            }
-          ]
-        }
-      },
-      "id": "cfa68f52-8b6c-461f-b697-3a5b8c1e9c6d",
-      "name": "A1 - Cron 9h Ingestion",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        0
-      ]
-    },
-    {
-      "parameters": {},
-      "id": "47a6743c-b536-43ad-97e4-fb45bb4dab32",
-      "name": "A1bis - Manual Trigger Test",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [
-        0,
-        208
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, email, nom, entreprise, produit_interesse FROM contacts WHERE statut='nouveau' LIMIT 20;",
-        "options": {}
-      },
-      "id": "b4e409c2-be99-4387-9f5f-37242898f128",
-      "name": "A2 - PG Get Nouveaux Prospects",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        256,
-        112
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=🆕 NOUVEAU PROSPECT (ID #{{$json.id}})\nNom : {{$json.nom}}\nEntreprise : {{$json.entreprise}}\nProduit : {{$json.produit_interesse}}\n\n👉 Tapez GO #{{$json.id}} pour lancer la rédaction du mail",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "Markdown"
-        }
-      },
-      "id": "d9525c1b-f276-482d-8ca6-94a6bb4a3faa",
-      "name": "A3 - TG Notif Nouveau Prospect",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        512,
-        112
-      ],
-      "webhookId": "b6fb823d-154d-4043-b884-d4e19c69c0d1",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET statut='en_attente_go', date_premier_contact=NOW() WHERE id=$1;",
-        "options": {
-          "queryReplacement": "=UPDATE contacts SET statut='en_attente_go', date_premier_contact=NOW() WHERE id={{ $('A2 - PG Get Nouveaux Prospects').item.json.id }};\n"
-        }
-      },
-      "id": "83f288e6-224c-48f7-9430-fbc223cc067b",
-      "name": "A4 - PG Statut en_attente_go",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        752,
-        112
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "updates": [
-          "message"
-        ],
-        "additionalFields": {}
-      },
-      "id": "06b8da3c-faef-4b0f-9c0d-8d8f2ed3ba69",
-      "name": "B1 - Telegram Trigger Commandes",
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        704
-      ],
-      "webhookId": "50f7ba1c-e8ec-4bac-beba-171e5ee8f3b2",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Remplace TOUT le code du nœud \"B2 - Code Parser Commande\"\nconst ALLOWED_CHAT_ID = -1004453819959; // seul le groupe BDE peut piloter le bot\nconst SIGNATURE = \"<p>Cordialement,</p><p>L'équipe Partenariats - Liste BDE ESSEC</p>\";\n\nconst item = $input.first().json;\nconst msg = item.message || {};\nconst text = (msg.text || '').trim();\nconst chat_id = msg.chat && msg.chat.id ? Number(msg.chat.id) : null;\n\nlet action = 'ignore';\nlet contact_id = null;\nlet new_text = null;\nlet new_html = null;\n\nif (chat_id === ALLOWED_CHAT_ID) {\n  const goMatch = text.match(/^GO\\s+#(\\d+)\\s*$/i);\n  const okMatch = text.match(/^OK\\s+#(\\d+)\\s*$/i);\n  const editMatch = text.match(/^EDIT\\s+#(\\d+)\\s+([\\s\\S]+)$/i);\n\n  if (goMatch) {\n    action = 'go';\n    contact_id = parseInt(goMatch[1], 10);\n  } else if (okMatch) {\n    action = 'ok';\n    contact_id = parseInt(okMatch[1], 10);\n  } else if (editMatch) {\n    action = 'edit';\n    contact_id = parseInt(editMatch[1], 10);\n    new_text = editMatch[2].trim();\n\n    // Texte brut Telegram -> HTML propre pour Gmail\n    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n    new_html = new_text\n      .split(/\\n\\s*\\n/)\n      .map(p => '<p>' + esc(p.trim()).replace(/\\n/g, '<br>') + '</p>')\n      .join('');\n    if (!/Partenariats - Liste BDE ESSEC/i.test(new_text)) new_html += SIGNATURE;\n  }\n}\n\nreturn [{ json: { action, contact_id, new_text, new_html, chat_id, raw_text: text } }];"
-      },
-      "id": "794c3906-d0b8-41cf-bee3-55039b9981ec",
-      "name": "B2 - Code Parser Commande",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        256,
-        704
-      ]
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.action}}",
-                    "rightValue": "go",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "go"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.action}}",
-                    "rightValue": "ok",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "ok"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 1
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{$json.action}}",
-                    "rightValue": "edit",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "edit"
-            }
-          ]
-        },
-        "options": {
-          "fallbackOutput": "none"
-        }
-      },
-      "id": "3b03b40f-d2f7-4b90-8078-51e3f365c602",
-      "name": "B3 - Switch Action",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
-      "position": [
-        512,
-        704
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, email, nom, entreprise, produit_interesse FROM contacts WHERE id=$1 AND statut IN ('nouveau','en_attente_go','mail_en_attente_groupe') LIMIT 1;",
-        "options": {
-          "queryReplacement": "={{$json.contact_id}}"
-        }
-      },
-      "id": "6202dc3d-f971-4b4f-8dfa-c78349cfce66",
-      "name": "B-GO-a - PG Get Contact",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        752,
-        368
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, email, nom, mail_genere, mail_sujet FROM contacts WHERE id=$1 AND statut='mail_en_attente_groupe' LIMIT 1;",
-        "options": {
-          "queryReplacement": "={{$json.contact_id}}"
-        }
-      },
-      "id": "11383adb-7076-4781-99e4-259f396a4b58",
-      "name": "B-OK-a - PG Get Mail Validé",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        752,
-        736
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "sendTo": "={{$json.email}}",
-        "subject": "={{$json.mail_sujet}}",
-        "message": "={{$json.mail_genere}}",
-        "options": {
-          "appendAttribution": false,
-          "senderName": "Partenariats - Liste BDE ESSEC"
-        }
-      },
-      "id": "01bd32c8-cb4b-4b9e-bd4b-9d0aeacf4299",
-      "name": "B-OK-b - Gmail Send",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [
-        1008,
-        736
-      ],
-      "webhookId": "c8ee4725-3f80-4248-92ee-a92ef27494a6",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "cyYCq7l2bKFjakhp",
-          "name": "Gmail account"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "leftValue": "={{$json.error}}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notExists",
-                "singleValue": true
-              },
-              "id": "86794372-a551-4154-8705-2b134f2ec472"
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "67fb2e18-df93-4094-8d54-f081c4b9d3f4",
-      "name": "B-OK-c - IF Envoi Réussi",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1264,
-        736
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET statut='mail_envoye', date_mail_envoye=NOW(), date_derniere_relance=NOW() WHERE id=$1 RETURNING email, nom;",
-        "options": {
-          "queryReplacement": "={{$('B-OK-a - PG Get Mail Validé').first().json.id}}"
-        }
-      },
-      "id": "909a02bc-52cd-47b1-acef-3a8db86da079",
-      "name": "B-OK-Succès - PG Update Envoyé",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1504,
-        688
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=✅ Mail envoyé à {{$json.nom}} ({{$json.email}})",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "Markdown"
-        }
-      },
-      "id": "5ce251e1-8006-411e-850f-2f0a10fe998f",
-      "name": "B-OK-Succès - TG Confirmation",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1760,
-        688
-      ],
-      "webhookId": "263db8c8-eb47-4411-8819-65515ab00a91",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET statut='relance_prevue', erreur_message=$$ {{ $json.error }} $$, date_derniere_tentative=NOW() WHERE id={{ $('B-OK-a - PG Get Mail Validé').first().json.id }};\n",
-        "options": {
-          "queryReplacement": "="
-        }
-      },
-      "id": "f59ee8e4-7719-45ca-92e7-44d9971adec6",
-      "name": "B-OK-Échec - PG Update Erreur",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1504,
-        832
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=⚠️ Échec envoi {{$('B-OK-a - PG Get Mail Validé').first().json.nom}}, sera réessayé",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "Markdown"
-        }
-      },
-      "id": "b539d581-cad6-4799-9f96-6b8b983f6faf",
-      "name": "B-OK-Échec - TG Alerte",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1760,
-        832
-      ],
-      "webhookId": "5770e067-b337-4e24-8475-ce6398747307",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "daysInterval": 6
-            }
-          ]
-        }
-      },
-      "id": "4776aecf-c32f-41c9-81c1-7cc50f58831e",
-      "name": "C1 - Schedule Relances 6j",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        1808
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, email, nom, entreprise, produit_interesse, mail_genere, mail_sujet, nombre_relances FROM contacts WHERE statut IN ('mail_envoye','relance_envoyee','relance_prevue') AND nombre_relances < 3 AND (date_derniere_relance IS NULL OR date_derniere_relance < NOW() - INTERVAL '6 days') ORDER BY date_derniere_relance ASC NULLS FIRST LIMIT 10;",
-        "options": {}
-      },
-      "id": "9e60306c-72a5-4e21-b7b4-2484f5442e27",
-      "name": "C2 - PG Get À Relancer",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        256,
-        1808
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Remplace TOUT le code du nœud \"C3 - Code Préparer Relance\"\nconst items = $input.all();\nconst out = [];\n\nfor (const it of items) {\n  const c = it.json;\n\n  const preambule =\n    `<p>Bonjour ${c.nom},</p>` +\n    `<p>Je me permets de revenir vers vous au sujet de mon précédent message concernant ${c.produit_interesse}, que je vous remets ci-dessous.</p>` +\n    `<hr>`;\n\n  // Retire la formule d'appel du mail d'origine pour éviter un double \"Bonjour\"\n  const corps = (c.mail_genere || '')\n    .replace(/^\\s*<p>\\s*(Bonjour|Madame|Monsieur|Cher|Chère)[^<]*<\\/p>/i, '');\n\n  out.push({\n    json: {\n      id: c.id,\n      email: c.email,\n      nom: c.nom,\n      entreprise: c.entreprise,\n      produit_interesse: c.produit_interesse,\n      nombre_relances: c.nombre_relances,\n      mail_relance: preambule + corps,\n      sujet_relance: '[Relance] ' + (c.mail_sujet || '')\n    }\n  });\n}\n\nreturn out;"
-      },
-      "id": "0c928ee4-b6a6-405b-96fa-f75ecd36ae82",
-      "name": "C3 - Code Préparer Relance",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        512,
-        1808
-      ]
-    },
-    {
-      "parameters": {
-        "sendTo": "={{$json.email}}",
-        "subject": "={{$json.sujet_relance}}",
-        "message": "={{$json.mail_relance}}",
-        "options": {
-          "appendAttribution": false
-        }
-      },
-      "id": "f1314236-5444-4960-9cb3-e314dc987590",
-      "name": "C4 - Gmail Send Relance",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [
-        752,
-        1808
-      ],
-      "webhookId": "ce779f60-a58c-4d8d-878e-18199b0ca34e",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "cyYCq7l2bKFjakhp",
-          "name": "Gmail account"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "leftValue": "={{$json.error}}",
-              "rightValue": "",
-              "operator": {
-                "type": "object",
-                "operation": "notExists",
-                "singleValue": true
+[
+  {
+    "updatedAt": "2026-10-22T12:45:51.608Z",
+    "createdAt": "2026-06-27T08:44:51.152Z",
+    "id": "R86QPwAkWDQnoUFR",
+    "name": "GOOD_v6_autom_bde",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * *"
               }
-            }
-          ],
-          "combinator": "and"
+            ]
+          }
         },
-        "options": {}
+        "id": "cfa68f52-8b6c-461f-b697-3a5b8c1e9c6d",
+        "name": "A1 - Cron 9h Ingestion",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
       },
-      "id": "9139767c-0e96-4dba-8c00-5c4a44f10c01",
-      "name": "C5 - IF Relance Envoyée",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1008,
-        1808
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET nombre_relances = nombre_relances + 1, date_derniere_relance = NOW(), statut = CASE WHEN nombre_relances + 1 >= 3 THEN 'pas_de_reponse' ELSE 'relance_envoyee' END WHERE id=$1 RETURNING nom, nombre_relances, statut;",
-        "options": {
-          "queryReplacement": "={{$('C3 - Code Préparer Relance').item.json.id}}"
+      {
+        "parameters": {},
+        "id": "47a6743c-b536-43ad-97e4-fb45bb4dab32",
+        "name": "A1bis - Manual Trigger Test",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          208
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT id, email, nom, entreprise, produit_interesse FROM contacts WHERE statut='nouveau' LIMIT 20;",
+          "options": {}
+        },
+        "id": "b4e409c2-be99-4387-9f5f-37242898f128",
+        "name": "A2 - PG Get Nouveaux Prospects",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          256,
+          112
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
         }
       },
-      "id": "c911ff98-e0bd-4c2f-98ab-6168b22fdbea",
-      "name": "C6-Succès - PG Update Relance",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1264,
-        1712
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=🆕 NOUVEAU PROSPECT (ID #{{$json.id}})\nNom : {{$json.nom}}\nEntreprise : {{$json.entreprise}}\nProduit : {{$json.produit_interesse}}\n\n👉 Tapez GO #{{$json.id}} pour lancer la rédaction du mail",
+          "additionalFields": {
+            "appendAttribution": false,
+            "parse_mode": "Markdown"
+          }
+        },
+        "id": "d9525c1b-f276-482d-8ca6-94a6bb4a3faa",
+        "name": "A3 - TG Notif Nouveau Prospect",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          512,
+          112
+        ],
+        "webhookId": "b6fb823d-154d-4043-b884-d4e19c69c0d1",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET statut='en_attente_go', date_premier_contact=NOW() WHERE id=$1;",
+          "options": {
+            "queryReplacement": "=UPDATE contacts SET statut='en_attente_go', date_premier_contact=NOW() WHERE id={{ $('A2 - PG Get Nouveaux Prospects').item.json.id }};\n"
+          }
+        },
+        "id": "83f288e6-224c-48f7-9430-fbc223cc067b",
+        "name": "A4 - PG Statut en_attente_go",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          752,
+          112
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
         }
+      },
+      {
+        "parameters": {
+          "updates": [
+            "message"
+          ],
+          "additionalFields": {}
+        },
+        "id": "06b8da3c-faef-4b0f-9c0d-8d8f2ed3ba69",
+        "name": "B1 - Telegram Trigger Commandes",
+        "type": "n8n-nodes-base.telegramTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          704
+        ],
+        "webhookId": "50f7ba1c-e8ec-4bac-beba-171e5ee8f3b2",
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const ALLOWED_CHAT_ID = -1004453819959; // seul le groupe BDE peut piloter le bot\nconst SIGNATURE = \"<p>Cordialement,</p><p>L'équipe Partenariats - Liste BDE ESSEC</p>\";\nconst USAGE = [\n  \"❓ Commande non reconnue. Commandes disponibles :\",\n  \"• GO #id : rédiger le mail du prospect\",\n  \"• OK #id : envoyer le mail validé\",\n  \"• EDIT #id votre texte : remplacer le brouillon\",\n  \"Exemple : GO #12\"\n].join(\"\\n\");\n\nconst item = $input.first().json;\nconst msg = item.message || {};\nconst text = (msg.text || '').trim();\nconst chat_id = msg.chat && msg.chat.id ? Number(msg.chat.id) : null;\n\nlet action = 'ignore';\nlet contact_id = null;\nlet new_text = null;\nlet new_html = null;\nlet usage_message = null;\n\nif (chat_id === ALLOWED_CHAT_ID) {\n  const goMatch = text.match(/^GO\\s+#(\\d+)\\s*$/i);\n  const okMatch = text.match(/^OK\\s+#(\\d+)\\s*$/i);\n  const editMatch = text.match(/^EDIT\\s+#(\\d+)\\s+([\\s\\S]+)$/i);\n  // Ressemble à une commande mais mal formée (ex. \"GO 1\", \"OK #abc\", \"EDIT #3\" sans texte, \"/aide\")\n  const looksLikeCommand = /^(GO|OK|EDIT)(\\s|#|$)/i.test(text) || text.startsWith('/');\n\n  if (goMatch) {\n    action = 'go';\n    contact_id = parseInt(goMatch[1], 10);\n  } else if (okMatch) {\n    action = 'ok';\n    contact_id = parseInt(okMatch[1], 10);\n  } else if (editMatch) {\n    action = 'edit';\n    contact_id = parseInt(editMatch[1], 10);\n    new_text = editMatch[2].trim();\n    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n    new_html = new_text\n      .split(/\\n\\s*\\n/)\n      .map(p => '<p>' + esc(p.trim()).replace(/\\n/g, '<br>') + '</p>')\n      .join('');\n    if (!/Partenariats - Liste BDE ESSEC/i.test(new_text)) new_html += SIGNATURE;\n  } else if (looksLikeCommand) {\n    action = 'usage';\n    usage_message = USAGE;\n  }\n}\n\nreturn [{ json: { action, contact_id, new_text, new_html, usage_message, chat_id, raw_text: text } }];"
+        },
+        "id": "794c3906-d0b8-41cf-bee3-55039b9981ec",
+        "name": "B2 - Code Parser Commande",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          256,
+          704
+        ]
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{$json.action}}",
+                      "rightValue": "go",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "id": "a68b3c56-7b34-4ff7-b475-7dbecbfbae15"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "go"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{$json.action}}",
+                      "rightValue": "ok",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "id": "8d536914-e885-43ca-a183-ab0efe1d3977"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "ok"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{$json.action}}",
+                      "rightValue": "edit",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "id": "02436809-db0f-48cf-8aff-f69f57ffd02c"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "edit"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "dcf4735b-c3a6-421e-b5f3-4191880e7882",
+                      "leftValue": "={{ $json.action }}",
+                      "rightValue": "usage",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "usage"
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "none"
+          }
+        },
+        "id": "3b03b40f-d2f7-4b90-8078-51e3f365c602",
+        "name": "B3 - Switch Action",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          512,
+          848
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT id, email, nom, entreprise, produit_interesse FROM contacts WHERE id=$1 AND statut IN ('nouveau','en_attente_go','mail_en_attente_groupe') LIMIT 1;",
+          "options": {
+            "queryReplacement": "={{$json.contact_id}}"
+          }
+        },
+        "id": "6202dc3d-f971-4b4f-8dfa-c78349cfce66",
+        "name": "B-GO-a - PG Get Contact",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          752,
+          368
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT id, email, nom, mail_genere, mail_sujet FROM contacts WHERE id=$1 AND statut='mail_en_attente_groupe' LIMIT 1;",
+          "options": {
+            "queryReplacement": "={{$json.contact_id}}"
+          }
+        },
+        "id": "11383adb-7076-4781-99e4-259f396a4b58",
+        "name": "B-OK-a - PG Get Mail Validé",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          752,
+          736
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "sendTo": "={{$json.email}}",
+          "subject": "={{$json.mail_sujet}}",
+          "message": "={{$json.mail_genere}}",
+          "options": {
+            "appendAttribution": false,
+            "senderName": "Partenariats - Liste BDE ESSEC"
+          }
+        },
+        "id": "01bd32c8-cb4b-4b9e-bd4b-9d0aeacf4299",
+        "name": "B-OK-b - Gmail Send",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          1008,
+          736
+        ],
+        "webhookId": "c8ee4725-3f80-4248-92ee-a92ef27494a6",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "cyYCq7l2bKFjakhp",
+            "name": "Gmail account"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{$json.error}}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notExists",
+                  "singleValue": true
+                },
+                "id": "86794372-a551-4154-8705-2b134f2ec472"
+              }
+            ],
+            "combinator": "and"
+          },
+          "looseTypeValidation": true,
+          "options": {}
+        },
+        "id": "67fb2e18-df93-4094-8d54-f081c4b9d3f4",
+        "name": "B-OK-c - IF Envoi Réussi",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1264,
+          736
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET statut='mail_envoye', date_mail_envoye=NOW(), date_derniere_relance=NOW() WHERE id=$1 RETURNING email, nom;",
+          "options": {
+            "queryReplacement": "={{$('B-OK-a - PG Get Mail Validé').first().json.id}}"
+          }
+        },
+        "id": "909a02bc-52cd-47b1-acef-3a8db86da079",
+        "name": "B-OK-Succès - PG Update Envoyé",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1504,
+          688
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=✅ Mail envoyé à {{$json.nom}} ({{$json.email}})",
+          "additionalFields": {
+            "appendAttribution": false,
+            "parse_mode": "Markdown"
+          }
+        },
+        "id": "5ce251e1-8006-411e-850f-2f0a10fe998f",
+        "name": "B-OK-Succès - TG Confirmation",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1760,
+          688
+        ],
+        "webhookId": "263db8c8-eb47-4411-8819-65515ab00a91",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET statut='relance_prevue', erreur_message=$$ {{ $json.error }} $$, date_derniere_tentative=NOW() WHERE id={{ $('B-OK-a - PG Get Mail Validé').first().json.id }};\n",
+          "options": {
+            "queryReplacement": "="
+          }
+        },
+        "id": "f59ee8e4-7719-45ca-92e7-44d9971adec6",
+        "name": "B-OK-Échec - PG Update Erreur",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1504,
+          832
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=⚠️ Échec envoi {{$('B-OK-a - PG Get Mail Validé').first().json.nom}}, sera réessayé",
+          "additionalFields": {
+            "appendAttribution": false,
+            "parse_mode": "Markdown"
+          }
+        },
+        "id": "b539d581-cad6-4799-9f96-6b8b983f6faf",
+        "name": "B-OK-Échec - TG Alerte",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1760,
+          832
+        ],
+        "webhookId": "5770e067-b337-4e24-8475-ce6398747307",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "daysInterval": 6
+              }
+            ]
+          }
+        },
+        "id": "4776aecf-c32f-41c9-81c1-7cc50f58831e",
+        "name": "C1 - Schedule Relances 6j",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          1808
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT id, email, nom, entreprise, produit_interesse, mail_genere, mail_sujet, nombre_relances FROM contacts WHERE statut IN ('mail_envoye','relance_envoyee','relance_prevue') AND nombre_relances < 3 AND (date_derniere_relance IS NULL OR date_derniere_relance < NOW() - INTERVAL '6 days') ORDER BY date_derniere_relance ASC NULLS FIRST LIMIT 10;",
+          "options": {}
+        },
+        "id": "9e60306c-72a5-4e21-b7b4-2484f5442e27",
+        "name": "C2 - PG Get À Relancer",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          256,
+          1808
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "// Remplace TOUT le code du nœud \"C3 - Code Préparer Relance\"\nconst items = $input.all();\nconst out = [];\n\nfor (const it of items) {\n  const c = it.json;\n\n  const preambule =\n    `<p>Bonjour ${c.nom},</p>` +\n    `<p>Je me permets de revenir vers vous au sujet de mon précédent message concernant ${c.produit_interesse}, que je vous remets ci-dessous.</p>` +\n    `<hr>`;\n\n  // Retire la formule d'appel du mail d'origine pour éviter un double \"Bonjour\"\n  const corps = (c.mail_genere || '')\n    .replace(/^\\s*<p>\\s*(Bonjour|Madame|Monsieur|Cher|Chère)[^<]*<\\/p>/i, '');\n\n  out.push({\n    json: {\n      id: c.id,\n      email: c.email,\n      nom: c.nom,\n      entreprise: c.entreprise,\n      produit_interesse: c.produit_interesse,\n      nombre_relances: c.nombre_relances,\n      mail_relance: preambule + corps,\n      sujet_relance: '[Relance] ' + (c.mail_sujet || '')\n    }\n  });\n}\n\nreturn out;"
+        },
+        "id": "0c928ee4-b6a6-405b-96fa-f75ecd36ae82",
+        "name": "C3 - Code Préparer Relance",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          512,
+          1808
+        ]
+      },
+      {
+        "parameters": {
+          "sendTo": "={{$json.email}}",
+          "subject": "={{$json.sujet_relance}}",
+          "message": "={{$json.mail_relance}}",
+          "options": {
+            "appendAttribution": false
+          }
+        },
+        "id": "f1314236-5444-4960-9cb3-e314dc987590",
+        "name": "C4 - Gmail Send Relance",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          752,
+          1808
+        ],
+        "webhookId": "ce779f60-a58c-4d8d-878e-18199b0ca34e",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "cyYCq7l2bKFjakhp",
+            "name": "Gmail account"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 1
+            },
+            "conditions": [
+              {
+                "leftValue": "={{$json.error}}",
+                "rightValue": "",
+                "operator": {
+                  "type": "object",
+                  "operation": "notExists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "9139767c-0e96-4dba-8c00-5c4a44f10c01",
+        "name": "C5 - IF Relance Envoyée",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1008,
+          1808
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET nombre_relances = nombre_relances + 1, date_derniere_relance = NOW(), statut = CASE WHEN nombre_relances + 1 >= 3 THEN 'pas_de_reponse' ELSE 'relance_envoyee' END WHERE id=$1 RETURNING nom, nombre_relances, statut;",
+          "options": {
+            "queryReplacement": "={{$('C3 - Code Préparer Relance').item.json.id}}"
+          }
+        },
+        "id": "c911ff98-e0bd-4c2f-98ab-6168b22fdbea",
+        "name": "C6-Succès - PG Update Relance",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1264,
+          1712
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=🔁 Relance envoyée à {{ ($json.nom || '').replace(/([_*`\\[])/g, '\\\\$1') }} (relance n°{{ $json.nombre_relances }}, statut : {{ ($json.statut || '').replace(/_/g, ' ') }})",
+          "additionalFields": {
+            "appendAttribution": false,
+            "parse_mode": "Markdown"
+          }
+        },
+        "id": "9bb8f519-3377-446d-907f-d3e5596ba65b",
+        "name": "C7-Succès - TG Notif Relance",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1504,
+          1712
+        ],
+        "webhookId": "ae78418d-dcf0-407e-b8f7-c971f36a6855",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET date_derniere_tentative = NOW(), erreur_message = $1 WHERE id=$2;",
+          "options": {
+            "queryReplacement": "=Echec envoi relance Gmail,{{$('C3 - Code Préparer Relance').item.json.id}}"
+          }
+        },
+        "id": "b8046d64-9b91-4aad-afdd-9828b61c2496",
+        "name": "C6-Échec - PG Update Erreur",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1264,
+          1904
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=⚠️ Échec relance pour {{$('C3 - Code Préparer Relance').item.json.nom}}",
+          "additionalFields": {
+            "appendAttribution": false,
+            "parse_mode": "Markdown"
+          }
+        },
+        "id": "fdb045eb-aa66-4260-a8ad-4ea1e775f0a9",
+        "name": "C7-Échec - TG Alerte Relance",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1504,
+          1904
+        ],
+        "webhookId": "506e9037-7b7c-4cbf-971a-5aac2b883ebb",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "pollTimes": {
+            "item": [
+              {
+                "mode": "everyMinute"
+              }
+            ]
+          },
+          "simple": false,
+          "filters": {
+            "labelIds": [
+              "INBOX"
+            ],
+            "readStatus": "unread"
+          },
+          "options": {}
+        },
+        "id": "f29c699f-b48a-4026-9af2-747b3e5676e7",
+        "name": "D1 - Gmail Trigger Réponses",
+        "type": "n8n-nodes-base.gmailTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          2512
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "cyYCq7l2bKFjakhp",
+            "name": "Gmail account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nconst out = [];\n\nconst autoReplyKeywords = [\n  'out of office', 'absence', 'absent', 'congés', 'congé',\n  'réponse automatique', 'reponse automatique', 'auto-reply', 'auto reply', 'automatic reply',\n  'noreply', 'no-reply', 'no_reply',\n  'mailer-daemon', 'mailer daemon', 'postmaster',\n  'undeliverable', 'undelivered', 'delivery status notification', 'delivery failure',\n  'message rejected', 'returned mail'\n];\n\n// Normalise n'importe quel champ (string, objet {text}, objet {value:[{address}]}) en string\nfunction toStr(v) {\n  if (!v) return '';\n  if (typeof v === 'string') return v;\n  if (typeof v === 'object') {\n    if (v.text) return v.text;\n    if (Array.isArray(v.value) && v.value.length) {\n      return v.value.map(x => `${x.name || ''} <${x.address || ''}>`).join(', ');\n    }\n    if (v.address) return `${v.name || ''} <${v.address}>`;\n  }\n  return String(v);\n}\n\nfunction extractEmail(from) {\n  if (!from) return null;\n  const m = from.match(/[\\w\\.\\-+]+@[\\w\\.\\-]+\\.[A-Za-z]{2,}/);\n  return m ? m[0].toLowerCase() : null;\n}\n\nfunction cleanBody(raw) {\n  if (!raw) return '';\n  let txt = raw.replace(/<[^>]+>/g, ' ');\n  txt = txt.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"');\n  const cutPatterns = [\n    /\\nLe\\s+.+?a\\s+écrit\\s*:/i,\n    /\\nOn\\s+.+?wrote\\s*:/i,\n    /\\nDe\\s*:\\s*.+\\nEnvoyé/i,\n    /\\nFrom\\s*:\\s*.+\\nSent/i\n  ];\n  for (const p of cutPatterns) {\n    const idx = txt.search(p);\n    if (idx >= 0) { txt = txt.substring(0, idx); }\n  }\n  txt = txt.split('\\n').filter(l => !l.trim().startsWith('>')).join('\\n');\n  return txt.trim().replace(/\\s+\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n');\n}\n\nfor (const it of items) {\n  const msg = it.json;\n  const headers = msg.payload && msg.payload.headers ? msg.payload.headers : [];\n  const getHeader = (n) => {\n    const h = headers.find(x => x.name && x.name.toLowerCase() === n.toLowerCase());\n    return h ? h.value : '';\n  };\n\n  const subject = toStr(msg.subject) || getHeader('Subject') || '';\n  const from = toStr(msg.from) || getHeader('From') || '';\n  const thread_id = msg.threadId || '';\n  const message_id = msg.id || getHeader('Message-ID') || '';\n  const bodyRaw = toStr(msg.text) || msg.snippet || toStr(msg.textPlain) || '';\n\n  const lowFrom = from.toLowerCase();\n  const lowSubject = subject.toLowerCase();\n  // Détection auto-reply uniquement sur from + subject (pas le corps cité)\n  const isAuto = autoReplyKeywords.some(k => lowFrom.includes(k) || lowSubject.includes(k));\n  if (isAuto) continue;\n\n  const prospect_email = extractEmail(from);\n  if (!prospect_email) continue;\n\n  // On ignore nos propres mails\n  if (prospect_email.endsWith('@essec-liste-bde.com')) continue;\n  \n  const body = cleanBody(bodyRaw.toString());\n\n  out.push({\n    json: { prospect_email, subject, body, from_header: from, thread_id, message_id }\n  });\n}\n\nreturn out;\n"
+        },
+        "id": "627b52ad-7c10-443d-b645-439b9fd940a0",
+        "name": "D2 - Code Filtrer Réponses",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          256,
+          2512
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT id, email, nom, entreprise, statut FROM contacts WHERE email=$1 LIMIT 1;",
+          "options": {
+            "queryReplacement": "={{$json.prospect_email}}"
+          }
+        },
+        "id": "18212e4d-45c5-4e15-b5a7-d5006518798e",
+        "name": "D3 - PG Lookup Contact",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          512,
+          2512
+        ],
+        "alwaysOutputData": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $('D3 - PG Lookup Contact').item.json.email }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty"
+                },
+                "id": "7a3b8671-8797-4ad2-a2e6-786907a0ef08"
+              }
+            ],
+            "combinator": "and"
+          },
+          "looseTypeValidation": true,
+          "options": {}
+        },
+        "id": "55d266de-b475-4151-a216-5c80fcb6d440",
+        "name": "D4 - IF Contact Trouvé",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          752,
+          2512
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET reponse_date = NOW(), reponse_body = $1, statut = CASE WHEN statut IN ('mail_envoye','relance_envoyee','relance_prevue') THEN 'reponse_recue' ELSE statut END WHERE id=$2 RETURNING nom, email, entreprise, statut;",
+          "options": {
+            "queryReplacement": "={{ [ $('D2 - Code Filtrer Réponses').item.json.body, $json.id ] }}"
+          }
+        },
+        "id": "84ff0460-f800-40ee-9eb4-5623f54076bc",
+        "name": "D5-Trouvé - PG Update Réponse",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1008,
+          2400
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=📬 RÉPONSE de {{ ($json.nom || '').replace(/([_*`\\[])/g, '\\\\$1') }} ({{ ($json.email || '').replace(/([_*`\\[])/g, '\\\\$1') }})\nEntreprise : {{ ($json.entreprise || '').replace(/([_*`\\[])/g, '\\\\$1') }}\nStatut : {{ ($json.statut || '').replace(/_/g, ' ') }}\n---\n{{ ($('D2 - Code Filtrer Réponses').item.json.body || '(message vide)').slice(0, 3000).replace(/([_*`\\[])/g, '\\\\$1') }}",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "id": "7b7cb685-d8dc-4c01-a0ca-b17045542095",
+        "name": "D6-Trouvé - TG Notif Réponse",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1264,
+          2400
+        ],
+        "webhookId": "4ff3c20f-bfaf-4375-8914-3167438de74c",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=⚠️ Nouveau mail d'un expéditeur inconnu ({{ ($('D2 - Code Filtrer Réponses').item.json.prospect_email || '').replace(/([_*`\\[])/g, '\\\\$1') }}), ticket #{{ $json.id }}\n🤖 Classé : {{ ($('D4b - Sub-WF Classifier IA').item.json.categorie || 'non classé').replace(/_/g, ' ') }} : {{ ($('D4b - Sub-WF Classifier IA').item.json.raison || '').replace(/([_*`\\[])/g, '\\\\$1') }}\nSujet : {{ ($('D2 - Code Filtrer Réponses').item.json.subject || '').replace(/([_*`\\[])/g, '\\\\$1') }}\n---\n{{ ($('D2 - Code Filtrer Réponses').item.json.body || '(message vide)').slice(0, 3000).replace(/([_*`\\[])/g, '\\\\$1') }}",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "id": "486efec1-60d7-40d3-b5d4-011b15749670",
+        "name": "D6-Inconnu - TG Alerte Ticket",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1616,
+          2752
+        ],
+        "webhookId": "d9b02e84-85e2-4f49-a618-d3e12fcaf9b1",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "markAsRead",
+          "messageId": "={{ $('D1 - Gmail Trigger Réponses').item.json.id }}"
+        },
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.2,
+        "position": [
+          1472,
+          2400
+        ],
+        "id": "a8ace4c9-b0b2-4ff1-87c1-24ecc3aac84e",
+        "name": "Mark a message as read",
+        "webhookId": "87973ae9-188d-4b00-ae0a-555ff95c210f",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "cyYCq7l2bKFjakhp",
+            "name": "Gmail account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "markAsUnread",
+          "messageId": "={{ $('D1 - Gmail Trigger Réponses').item.json.id }}"
+        },
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.2,
+        "position": [
+          1824,
+          2752
+        ],
+        "id": "4694fe81-e58e-4f36-9791-c4f11a379576",
+        "name": "Mark a message as unread",
+        "webhookId": "d0bcf6a8-6e76-4fa5-8afc-9e59d15cab40",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "cyYCq7l2bKFjakhp",
+            "name": "Gmail account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "8FjPmS8BbJdc46Nd",
+            "mode": "list",
+            "cachedResultUrl": "/workflow/8FjPmS8BbJdc46Nd",
+            "cachedResultName": "Sub-Groq-Copywriter"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "id": "={{ $json.id }}",
+              "email": "={{ $json.email }}",
+              "nom": "={{ $json.nom }}",
+              "entreprise": "={{ $json.entreprise }}",
+              "produit_interesse": "={{ $json.produit_interesse }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "id",
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "number"
+              },
+              {
+                "id": "email",
+                "displayName": "email",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "nom",
+                "displayName": "nom",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "entreprise",
+                "displayName": "entreprise",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "produit_interesse",
+                "displayName": "produit_interesse",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          },
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "id": "a6fca2f2-561d-42cb-97e7-e5794bf3a8c6",
+        "name": "B-GO-b - Sub-WF Copywriter",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          1008,
+          368
+        ],
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=⚠️ Échec de génération du mail pour {{ $('B-GO-a - PG Get Contact').item.json.nom }} (ID #{{ $('B-GO-a - PG Get Contact').item.json.id }})\nErreur : {{ typeof $json.error === 'string' ? $json.error : JSON.stringify($json.error) }}\n👉 Retapez GO #{{ $('B-GO-a - PG Get Contact').item.json.id }} pour réessayer",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "id": "39c4014d-b396-4759-a6ae-5cb11849dee3",
+        "name": "B-GO-Échec - TG Alerte Groq",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1264,
+          544
+        ],
+        "webhookId": "188e37cd-d56b-48e6-b4b2-243d3a554cca",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET mail_genere = $1, mail_sujet = $2, statut = 'mail_en_attente_groupe' WHERE id = $3 RETURNING id, nom, entreprise, mail_genere, mail_sujet;",
+          "options": {
+            "queryReplacement": "={{ [ $json.mail_genere, $json.mail_sujet, $json.id ] }}"
+          }
+        },
+        "id": "fe63f470-6398-4864-9a6d-611a20c20620",
+        "name": "B-GO-d - PG Save Mail Généré",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1264,
+          368
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=📧 MAIL À VALIDER (ID #{{ $json.id }})\nPour : {{ $json.nom }} ({{ $json.entreprise }})\nSujet : {{ $json.mail_sujet }}\n---\n{{ ($json.mail_genere || '').replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/p>/gi, '\\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 3500) }}\n---\n✅ OK #{{ $json.id }} pour envoyer\n✏️ EDIT #{{ $json.id }} <texte> pour modifier",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "id": "b4db38e3-2334-463a-a72f-a0d9b5e73abb",
+        "name": "B-GO-e - TG Demande Validation",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1504,
+          368
+        ],
+        "webhookId": "d66e4b15-a85d-4342-b8fc-cd55ae6ac9c7",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE contacts SET mail_genere = $1, statut = 'mail_en_attente_groupe' WHERE id = $2 AND statut = 'mail_en_attente_groupe' RETURNING id, nom, mail_genere;",
+          "options": {
+            "queryReplacement": "={{ [ $json.new_html, $json.contact_id ] }}"
+          }
+        },
+        "id": "1b2c2e2b-655e-4e41-8738-157434f3df34",
+        "name": "B-EDIT-a - PG Update Mail Édité",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          752,
+          1072
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "=✏️ Nouvelle version pour {{ $json.nom }} (ID #{{ $json.id }})\n---\n{{ ($json.mail_genere || '').replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/p>/gi, '\\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 3500) }}\n---\n✅ OK #{{ $json.id }} pour envoyer",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "id": "b424da1b-2b84-4814-957b-c2b20db68385",
+        "name": "B-EDIT-b - TG Nouvelle Version",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          1008,
+          1072
+        ],
+        "webhookId": "84f19199-9e4c-447a-a28d-e65f3c4f4dbe",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO support_tickets (prospect_email, subject, body, from_header, thread_id, message_id, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,'new',NOW()) RETURNING id;",
+          "options": {
+            "queryReplacement": "={{ [ $('D2 - Code Filtrer Réponses').item.json.prospect_email, $('D2 - Code Filtrer Réponses').item.json.subject, $('D2 - Code Filtrer Réponses').item.json.body, $('D2 - Code Filtrer Réponses').item.json.from_header, $('D2 - Code Filtrer Réponses').item.json.thread_id, $('D2 - Code Filtrer Réponses').item.json.message_id ] }}"
+          }
+        },
+        "id": "86084b03-1853-40be-8fac-a84ad36cfeb6",
+        "name": "D5-Inconnu - PG Insert Ticket",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          1376,
+          2752
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "credentials": {
+          "postgres": {
+            "id": "74gxFVZOP47kHegg",
+            "name": "Postgres-BDE"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "DWZe22zpvGRMiwdM",
+            "mode": "list",
+            "cachedResultUrl": "/workflow/DWZe22zpvGRMiwdM",
+            "cachedResultName": "7_Sub-AI-Mail-Classifier"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "from_header": "={{ $('D2 - Code Filtrer Réponses').item.json.from_header }}",
+              "prospect_email": "={{ $('D2 - Code Filtrer Réponses').item.json.prospect_email }}",
+              "subject": "={{ $('D2 - Code Filtrer Réponses').item.json.subject }}",
+              "body": "={{ $('D2 - Code Filtrer Réponses').item.json.body }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "from_header",
+                "displayName": "from_header",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "prospect_email",
+                "displayName": "prospect_email",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "subject",
+                "displayName": "subject",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "body",
+                "displayName": "body",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          },
+          "mode": "each",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "id": "bef078e7-e2d5-4514-8044-aad4d4b835d4",
+        "name": "D4b - Sub-WF Classifier IA",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          992,
+          2736
+        ],
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "4531cbab-f70c-45d0-bf60-329f3972f1e7",
+                "leftValue": "={{ $json.pertinent }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "looseTypeValidation": true,
+          "options": {}
+        },
+        "id": "a3961e17-0ecc-4ffc-94b7-1d57392c8807",
+        "name": "D4c - IF Mail Pertinent",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1152,
+          2608
+        ]
+      },
+      {
+        "parameters": {
+          "chatId": "-1004453819959",
+          "text": "={{ $json.usage_message }}",
+          "additionalFields": {
+            "appendAttribution": false
+          }
+        },
+        "name": "B-USAGE - TG Aide Commandes",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          720,
+          1280
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "id": "443ede93-1b23-406b-a23d-e9557bb2be4e",
+        "webhookId": "10554245-bf1a-4fe8-82ac-109746d90ec7",
+        "credentials": {
+          "telegramApi": {
+            "id": "rrqpyzc4ZSPttszc",
+            "name": "Telegram account 2"
+          }
+        },
+        "continueOnFail": true
       }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=🔁 Relance envoyée à {{ ($json.nom || '').replace(/([_*`\\[])/g, '\\\\$1') }} (relance n°{{ $json.nombre_relances }}, statut : {{ ($json.statut || '').replace(/_/g, ' ') }})",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "Markdown"
-        }
-      },
-      "id": "9bb8f519-3377-446d-907f-d3e5596ba65b",
-      "name": "C7-Succès - TG Notif Relance",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1504,
-        1712
-      ],
-      "webhookId": "ae78418d-dcf0-407e-b8f7-c971f36a6855",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET date_derniere_tentative = NOW(), erreur_message = $1 WHERE id=$2;",
-        "options": {
-          "queryReplacement": "=Echec envoi relance Gmail,{{$('C3 - Code Préparer Relance').item.json.id}}"
-        }
-      },
-      "id": "b8046d64-9b91-4aad-afdd-9828b61c2496",
-      "name": "C6-Échec - PG Update Erreur",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1264,
-        1904
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=⚠️ Échec relance pour {{$('C3 - Code Préparer Relance').item.json.nom}}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "Markdown"
-        }
-      },
-      "id": "fdb045eb-aa66-4260-a8ad-4ea1e775f0a9",
-      "name": "C7-Échec - TG Alerte Relance",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1504,
-        1904
-      ],
-      "webhookId": "506e9037-7b7c-4cbf-971a-5aac2b883ebb",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "pollTimes": {
-          "item": [
+    ],
+    "connections": {
+      "A1 - Cron 9h Ingestion": {
+        "main": [
+          [
             {
-              "mode": "everyMinute"
+              "node": "A2 - PG Get Nouveaux Prospects",
+              "type": "main",
+              "index": 0
             }
           ]
-        },
-        "simple": false,
-        "filters": {
-          "labelIds": [
-            "INBOX"
-          ],
-          "readStatus": "unread"
-        },
-        "options": {}
+        ]
       },
-      "id": "f29c699f-b48a-4026-9af2-747b3e5676e7",
-      "name": "D1 - Gmail Trigger Réponses",
-      "type": "n8n-nodes-base.gmailTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        2512
-      ],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "cyYCq7l2bKFjakhp",
-          "name": "Gmail account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\nconst out = [];\n\nconst autoReplyKeywords = [\n  'out of office', 'absence', 'absent', 'congés', 'congé',\n  'réponse automatique', 'reponse automatique', 'auto-reply', 'auto reply', 'automatic reply',\n  'noreply', 'no-reply', 'no_reply',\n  'mailer-daemon', 'mailer daemon', 'postmaster',\n  'undeliverable', 'undelivered', 'delivery status notification', 'delivery failure',\n  'message rejected', 'returned mail'\n];\n\n// Normalise n'importe quel champ (string, objet {text}, objet {value:[{address}]}) en string\nfunction toStr(v) {\n  if (!v) return '';\n  if (typeof v === 'string') return v;\n  if (typeof v === 'object') {\n    if (v.text) return v.text;\n    if (Array.isArray(v.value) && v.value.length) {\n      return v.value.map(x => `${x.name || ''} <${x.address || ''}>`).join(', ');\n    }\n    if (v.address) return `${v.name || ''} <${v.address}>`;\n  }\n  return String(v);\n}\n\nfunction extractEmail(from) {\n  if (!from) return null;\n  const m = from.match(/[\\w\\.\\-+]+@[\\w\\.\\-]+\\.[A-Za-z]{2,}/);\n  return m ? m[0].toLowerCase() : null;\n}\n\nfunction cleanBody(raw) {\n  if (!raw) return '';\n  let txt = raw.replace(/<[^>]+>/g, ' ');\n  txt = txt.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"');\n  const cutPatterns = [\n    /\\nLe\\s+.+?a\\s+écrit\\s*:/i,\n    /\\nOn\\s+.+?wrote\\s*:/i,\n    /\\nDe\\s*:\\s*.+\\nEnvoyé/i,\n    /\\nFrom\\s*:\\s*.+\\nSent/i\n  ];\n  for (const p of cutPatterns) {\n    const idx = txt.search(p);\n    if (idx >= 0) { txt = txt.substring(0, idx); }\n  }\n  txt = txt.split('\\n').filter(l => !l.trim().startsWith('>')).join('\\n');\n  return txt.trim().replace(/\\s+\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n');\n}\n\nfor (const it of items) {\n  const msg = it.json;\n  const headers = msg.payload && msg.payload.headers ? msg.payload.headers : [];\n  const getHeader = (n) => {\n    const h = headers.find(x => x.name && x.name.toLowerCase() === n.toLowerCase());\n    return h ? h.value : '';\n  };\n\n  const subject = toStr(msg.subject) || getHeader('Subject') || '';\n  const from = toStr(msg.from) || getHeader('From') || '';\n  const thread_id = msg.threadId || '';\n  const message_id = msg.id || getHeader('Message-ID') || '';\n  const bodyRaw = toStr(msg.text) || msg.snippet || toStr(msg.textPlain) || '';\n\n  const lowFrom = from.toLowerCase();\n  const lowSubject = subject.toLowerCase();\n  // Détection auto-reply uniquement sur from + subject (pas le corps cité)\n  const isAuto = autoReplyKeywords.some(k => lowFrom.includes(k) || lowSubject.includes(k));\n  if (isAuto) continue;\n\n  const prospect_email = extractEmail(from);\n  if (!prospect_email) continue;\n\n  // On ignore nos propres mails\n  if (prospect_email.endsWith('@essec-liste-bde.com')) continue;\n  \n  const body = cleanBody(bodyRaw.toString());\n\n  out.push({\n    json: { prospect_email, subject, body, from_header: from, thread_id, message_id }\n  });\n}\n\nreturn out;\n"
-      },
-      "id": "627b52ad-7c10-443d-b645-439b9fd940a0",
-      "name": "D2 - Code Filtrer Réponses",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        256,
-        2512
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, email, nom, entreprise, statut FROM contacts WHERE email=$1 LIMIT 1;",
-        "options": {
-          "queryReplacement": "={{$json.prospect_email}}"
-        }
-      },
-      "id": "18212e4d-45c5-4e15-b5a7-d5006518798e",
-      "name": "D3 - PG Lookup Contact",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        512,
-        2512
-      ],
-      "alwaysOutputData": true,
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
+      "A1bis - Manual Trigger Test": {
+        "main": [
+          [
             {
-              "leftValue": "={{ $('D3 - PG Lookup Contact').item.json.email }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty"
-              },
-              "id": "7a3b8671-8797-4ad2-a2e6-786907a0ef08"
+              "node": "A2 - PG Get Nouveaux Prospects",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "A2 - PG Get Nouveaux Prospects": {
+        "main": [
+          [
+            {
+              "node": "A3 - TG Notif Nouveau Prospect",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "A3 - TG Notif Nouveau Prospect": {
+        "main": [
+          [
+            {
+              "node": "A4 - PG Statut en_attente_go",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B1 - Telegram Trigger Commandes": {
+        "main": [
+          [
+            {
+              "node": "B2 - Code Parser Commande",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B2 - Code Parser Commande": {
+        "main": [
+          [
+            {
+              "node": "B3 - Switch Action",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B3 - Switch Action": {
+        "main": [
+          [
+            {
+              "node": "B-GO-a - PG Get Contact",
+              "type": "main",
+              "index": 0
             }
           ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "55d266de-b475-4151-a216-5c80fcb6d440",
-      "name": "D4 - IF Contact Trouvé",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        752,
-        2512
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET reponse_date = NOW(), reponse_body = $1, statut = CASE WHEN statut IN ('mail_envoye','relance_envoyee','relance_prevue') THEN 'reponse_recue' ELSE statut END WHERE id=$2 RETURNING nom, email, entreprise, statut;",
-        "options": {
-          "queryReplacement": "={{ [ $('D2 - Code Filtrer Réponses').item.json.body, $json.id ] }}"
-        }
-      },
-      "id": "84ff0460-f800-40ee-9eb4-5623f54076bc",
-      "name": "D5-Trouvé - PG Update Réponse",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1008,
-        2400
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=📬 RÉPONSE de {{ ($json.nom || '').replace(/([_*`\\[])/g, '\\\\$1') }} ({{ ($json.email || '').replace(/([_*`\\[])/g, '\\\\$1') }})\nEntreprise : {{ ($json.entreprise || '').replace(/([_*`\\[])/g, '\\\\$1') }}\nStatut : {{ ($json.statut || '').replace(/_/g, ' ') }}\n---\n{{ ($('D2 - Code Filtrer Réponses').item.json.body || '(message vide)').slice(0, 3000).replace(/([_*`\\[])/g, '\\\\$1') }}",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "id": "7b7cb685-d8dc-4c01-a0ca-b17045542095",
-      "name": "D6-Trouvé - TG Notif Réponse",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1264,
-        2400
-      ],
-      "webhookId": "4ff3c20f-bfaf-4375-8914-3167438de74c",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=⚠️ Nouveau mail d'un expéditeur inconnu ({{ ($('D2 - Code Filtrer Réponses').item.json.prospect_email || '').replace(/([_*`\\[])/g, '\\\\$1') }}), ticket #{{ $json.id }}\n🤖 Classé : {{ ($('D4b - Sub-WF Classifier IA').item.json.categorie || 'non classé').replace(/_/g, ' ') }} : {{ ($('D4b - Sub-WF Classifier IA').item.json.raison || '').replace(/([_*`\\[])/g, '\\\\$1') }}\nSujet : {{ ($('D2 - Code Filtrer Réponses').item.json.subject || '').replace(/([_*`\\[])/g, '\\\\$1') }}\n---\n{{ ($('D2 - Code Filtrer Réponses').item.json.body || '(message vide)').slice(0, 3000).replace(/([_*`\\[])/g, '\\\\$1') }}",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "id": "486efec1-60d7-40d3-b5d4-011b15749670",
-      "name": "D6-Inconnu - TG Alerte Ticket",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1616,
-        2752
-      ],
-      "webhookId": "d9b02e84-85e2-4f49-a618-d3e12fcaf9b1",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "markAsRead",
-        "messageId": "={{ $('D1 - Gmail Trigger Réponses').item.json.id }}"
-      },
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.2,
-      "position": [
-        1472,
-        2400
-      ],
-      "id": "a8ace4c9-b0b2-4ff1-87c1-24ecc3aac84e",
-      "name": "Mark a message as read",
-      "webhookId": "87973ae9-188d-4b00-ae0a-555ff95c210f",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "cyYCq7l2bKFjakhp",
-          "name": "Gmail account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "markAsUnread",
-        "messageId": "={{ $('D1 - Gmail Trigger Réponses').item.json.id }}"
-      },
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.2,
-      "position": [
-        1824,
-        2752
-      ],
-      "id": "4694fe81-e58e-4f36-9791-c4f11a379576",
-      "name": "Mark a message as unread",
-      "webhookId": "d0bcf6a8-6e76-4fa5-8afc-9e59d15cab40",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "cyYCq7l2bKFjakhp",
-          "name": "Gmail account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "8FjPmS8BbJdc46Nd",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/8FjPmS8BbJdc46Nd",
-          "cachedResultName": "Sub-Groq-Copywriter"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "id": "={{ $json.id }}",
-            "email": "={{ $json.email }}",
-            "nom": "={{ $json.nom }}",
-            "entreprise": "={{ $json.entreprise }}",
-            "produit_interesse": "={{ $json.produit_interesse }}"
-          },
-          "matchingColumns": [],
-          "schema": [
+          [
             {
-              "id": "id",
-              "displayName": "id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "number"
-            },
-            {
-              "id": "email",
-              "displayName": "email",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "nom",
-              "displayName": "nom",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "entreprise",
-              "displayName": "entreprise",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "produit_interesse",
-              "displayName": "produit_interesse",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
+              "node": "B-OK-a - PG Get Mail Validé",
+              "type": "main",
+              "index": 0
             }
           ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "options": {
-          "waitForSubWorkflow": true
-        }
-      },
-      "id": "a6fca2f2-561d-42cb-97e7-e5794bf3a8c6",
-      "name": "B-GO-b - Sub-WF Copywriter",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        1008,
-        368
-      ],
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=⚠️ Échec de génération du mail pour {{ $('B-GO-a - PG Get Contact').item.json.nom }} (ID #{{ $('B-GO-a - PG Get Contact').item.json.id }})\nErreur : {{ typeof $json.error === 'string' ? $json.error : JSON.stringify($json.error) }}\n👉 Retapez GO #{{ $('B-GO-a - PG Get Contact').item.json.id }} pour réessayer",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "id": "39c4014d-b396-4759-a6ae-5cb11849dee3",
-      "name": "B-GO-Échec - TG Alerte Groq",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1264,
-        544
-      ],
-      "webhookId": "188e37cd-d56b-48e6-b4b2-243d3a554cca",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET mail_genere = $1, mail_sujet = $2, statut = 'mail_en_attente_groupe' WHERE id = $3 RETURNING id, nom, entreprise, mail_genere, mail_sujet;",
-        "options": {
-          "queryReplacement": "={{ [ $json.mail_genere, $json.mail_sujet, $json.id ] }}"
-        }
-      },
-      "id": "fe63f470-6398-4864-9a6d-611a20c20620",
-      "name": "B-GO-d - PG Save Mail Généré",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1264,
-        368
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=📧 MAIL À VALIDER (ID #{{ $json.id }})\nPour : {{ $json.nom }} ({{ $json.entreprise }})\nSujet : {{ $json.mail_sujet }}\n---\n{{ ($json.mail_genere || '').replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/p>/gi, '\\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 3500) }}\n---\n✅ OK #{{ $json.id }} pour envoyer\n✏️ EDIT #{{ $json.id }} <texte> pour modifier",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "id": "b4db38e3-2334-463a-a72f-a0d9b5e73abb",
-      "name": "B-GO-e - TG Demande Validation",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1504,
-        368
-      ],
-      "webhookId": "d66e4b15-a85d-4342-b8fc-cd55ae6ac9c7",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE contacts SET mail_genere = $1, statut = 'mail_en_attente_groupe' WHERE id = $2 AND statut = 'mail_en_attente_groupe' RETURNING id, nom, mail_genere;",
-        "options": {
-          "queryReplacement": "={{ [ $json.new_html, $json.contact_id ] }}"
-        }
-      },
-      "id": "1b2c2e2b-655e-4e41-8738-157434f3df34",
-      "name": "B-EDIT-a - PG Update Mail Édité",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        752,
-        1072
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "-1004453819959",
-        "text": "=✏️ Nouvelle version pour {{ $json.nom }} (ID #{{ $json.id }})\n---\n{{ ($json.mail_genere || '').replace(/<br\\s*\\/?>/gi, '\\n').replace(/<\\/p>/gi, '\\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 3500) }}\n---\n✅ OK #{{ $json.id }} pour envoyer",
-        "additionalFields": {
-          "appendAttribution": false
-        }
-      },
-      "id": "b424da1b-2b84-4814-957b-c2b20db68385",
-      "name": "B-EDIT-b - TG Nouvelle Version",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        1008,
-        1072
-      ],
-      "webhookId": "84f19199-9e4c-447a-a28d-e65f3c4f4dbe",
-      "credentials": {
-        "telegramApi": {
-          "id": "rrqpyzc4ZSPttszc",
-          "name": "Telegram account 2"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO support_tickets (prospect_email, subject, body, from_header, thread_id, message_id, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,'new',NOW()) RETURNING id;",
-        "options": {
-          "queryReplacement": "={{ [ $('D2 - Code Filtrer Réponses').item.json.prospect_email, $('D2 - Code Filtrer Réponses').item.json.subject, $('D2 - Code Filtrer Réponses').item.json.body, $('D2 - Code Filtrer Réponses').item.json.from_header, $('D2 - Code Filtrer Réponses').item.json.thread_id, $('D2 - Code Filtrer Réponses').item.json.message_id ] }}"
-        }
-      },
-      "id": "86084b03-1853-40be-8fac-a84ad36cfeb6",
-      "name": "D5-Inconnu - PG Insert Ticket",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [
-        1376,
-        2752
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "74gxFVZOP47kHegg",
-          "name": "Postgres-BDE"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "DWZe22zpvGRMiwdM",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/DWZe22zpvGRMiwdM",
-          "cachedResultName": "7_Sub-AI-Mail-Classifier"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "from_header": "={{ $('D2 - Code Filtrer Réponses').item.json.from_header }}",
-            "prospect_email": "={{ $('D2 - Code Filtrer Réponses').item.json.prospect_email }}",
-            "subject": "={{ $('D2 - Code Filtrer Réponses').item.json.subject }}",
-            "body": "={{ $('D2 - Code Filtrer Réponses').item.json.body }}"
-          },
-          "matchingColumns": [],
-          "schema": [
+          [
             {
-              "id": "from_header",
-              "displayName": "from_header",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "prospect_email",
-              "displayName": "prospect_email",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "subject",
-              "displayName": "subject",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "body",
-              "displayName": "body",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
+              "node": "B-EDIT-a - PG Update Mail Édité",
+              "type": "main",
+              "index": 0
             }
           ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
-        },
-        "mode": "each",
-        "options": {
-          "waitForSubWorkflow": true
-        }
-      },
-      "id": "bef078e7-e2d5-4514-8044-aad4d4b835d4",
-      "name": "D4b - Sub-WF Classifier IA",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        992,
-        2736
-      ],
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
+          [
             {
-              "id": "4531cbab-f70c-45d0-bf60-329f3972f1e7",
-              "leftValue": "={{ $json.pertinent }}",
-              "rightValue": "",
-              "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
-              }
+              "node": "B-USAGE - TG Aide Commandes",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-GO-a - PG Get Contact": {
+        "main": [
+          [
+            {
+              "node": "B-GO-b - Sub-WF Copywriter",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-OK-a - PG Get Mail Validé": {
+        "main": [
+          [
+            {
+              "node": "B-OK-b - Gmail Send",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-OK-b - Gmail Send": {
+        "main": [
+          [
+            {
+              "node": "B-OK-c - IF Envoi Réussi",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-OK-c - IF Envoi Réussi": {
+        "main": [
+          [
+            {
+              "node": "B-OK-Succès - PG Update Envoyé",
+              "type": "main",
+              "index": 0
             }
           ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
+          [
+            {
+              "node": "B-OK-Échec - PG Update Erreur",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       },
-      "id": "a3961e17-0ecc-4ffc-94b7-1d57392c8807",
-      "name": "D4c - IF Mail Pertinent",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1152,
-        2608
-      ]
-    }
-  ],
-  "connections": {
-    "A1 - Cron 9h Ingestion": {
-      "main": [
-        [
-          {
-            "node": "A2 - PG Get Nouveaux Prospects",
-            "type": "main",
-            "index": 0
-          }
+      "B-OK-Succès - PG Update Envoyé": {
+        "main": [
+          [
+            {
+              "node": "B-OK-Succès - TG Confirmation",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "A1bis - Manual Trigger Test": {
-      "main": [
-        [
-          {
-            "node": "A2 - PG Get Nouveaux Prospects",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "B-OK-Échec - PG Update Erreur": {
+        "main": [
+          [
+            {
+              "node": "B-OK-Échec - TG Alerte",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "A2 - PG Get Nouveaux Prospects": {
-      "main": [
-        [
-          {
-            "node": "A3 - TG Notif Nouveau Prospect",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C1 - Schedule Relances 6j": {
+        "main": [
+          [
+            {
+              "node": "C2 - PG Get À Relancer",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "A3 - TG Notif Nouveau Prospect": {
-      "main": [
-        [
-          {
-            "node": "A4 - PG Statut en_attente_go",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C2 - PG Get À Relancer": {
+        "main": [
+          [
+            {
+              "node": "C3 - Code Préparer Relance",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "B1 - Telegram Trigger Commandes": {
-      "main": [
-        [
-          {
-            "node": "B2 - Code Parser Commande",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C3 - Code Préparer Relance": {
+        "main": [
+          [
+            {
+              "node": "C4 - Gmail Send Relance",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "B2 - Code Parser Commande": {
-      "main": [
-        [
-          {
-            "node": "B3 - Switch Action",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C4 - Gmail Send Relance": {
+        "main": [
+          [
+            {
+              "node": "C5 - IF Relance Envoyée",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "B3 - Switch Action": {
-      "main": [
-        [
-          {
-            "node": "B-GO-a - PG Get Contact",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "B-OK-a - PG Get Mail Validé",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "B-EDIT-a - PG Update Mail Édité",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C5 - IF Relance Envoyée": {
+        "main": [
+          [
+            {
+              "node": "C6-Succès - PG Update Relance",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "C6-Échec - PG Update Erreur",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "B-GO-a - PG Get Contact": {
-      "main": [
-        [
-          {
-            "node": "B-GO-b - Sub-WF Copywriter",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C6-Succès - PG Update Relance": {
+        "main": [
+          [
+            {
+              "node": "C7-Succès - TG Notif Relance",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "B-OK-a - PG Get Mail Validé": {
-      "main": [
-        [
-          {
-            "node": "B-OK-b - Gmail Send",
-            "type": "main",
-            "index": 0
-          }
+      },
+      "C6-Échec - PG Update Erreur": {
+        "main": [
+          [
+            {
+              "node": "C7-Échec - TG Alerte Relance",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
-      ]
-    },
-    "B-OK-b - Gmail Send": {
-      "main": [
-        [
-          {
-            "node": "B-OK-c - IF Envoi Réussi",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B-OK-c - IF Envoi Réussi": {
-      "main": [
-        [
-          {
-            "node": "B-OK-Succès - PG Update Envoyé",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "B-OK-Échec - PG Update Erreur",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B-OK-Succès - PG Update Envoyé": {
-      "main": [
-        [
-          {
-            "node": "B-OK-Succès - TG Confirmation",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B-OK-Échec - PG Update Erreur": {
-      "main": [
-        [
-          {
-            "node": "B-OK-Échec - TG Alerte",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C1 - Schedule Relances 6j": {
-      "main": [
-        [
-          {
-            "node": "C2 - PG Get À Relancer",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C2 - PG Get À Relancer": {
-      "main": [
-        [
-          {
-            "node": "C3 - Code Préparer Relance",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C3 - Code Préparer Relance": {
-      "main": [
-        [
-          {
-            "node": "C4 - Gmail Send Relance",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C4 - Gmail Send Relance": {
-      "main": [
-        [
-          {
-            "node": "C5 - IF Relance Envoyée",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C5 - IF Relance Envoyée": {
-      "main": [
-        [
-          {
-            "node": "C6-Succès - PG Update Relance",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "C6-Échec - PG Update Erreur",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C6-Succès - PG Update Relance": {
-      "main": [
-        [
-          {
-            "node": "C7-Succès - TG Notif Relance",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "C6-Échec - PG Update Erreur": {
-      "main": [
-        [
-          {
-            "node": "C7-Échec - TG Alerte Relance",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D1 - Gmail Trigger Réponses": {
-      "main": [
-        [
-          {
-            "node": "D2 - Code Filtrer Réponses",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D2 - Code Filtrer Réponses": {
-      "main": [
-        [
-          {
-            "node": "D3 - PG Lookup Contact",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D3 - PG Lookup Contact": {
-      "main": [
-        [
-          {
-            "node": "D4 - IF Contact Trouvé",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D4 - IF Contact Trouvé": {
-      "main": [
-        [
-          {
-            "node": "D5-Trouvé - PG Update Réponse",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "D4b - Sub-WF Classifier IA",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D5-Trouvé - PG Update Réponse": {
-      "main": [
-        [
-          {
-            "node": "D6-Trouvé - TG Notif Réponse",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D6-Trouvé - TG Notif Réponse": {
-      "main": [
-        [
-          {
-            "node": "Mark a message as read",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D6-Inconnu - TG Alerte Ticket": {
-      "main": [
-        [
-          {
-            "node": "Mark a message as unread",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B-GO-b - Sub-WF Copywriter": {
-      "main": [
-        [
-          {
-            "node": "B-GO-d - PG Save Mail Généré",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "B-GO-Échec - TG Alerte Groq",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B-GO-d - PG Save Mail Généré": {
-      "main": [
-        [
-          {
-            "node": "B-GO-e - TG Demande Validation",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "B-EDIT-a - PG Update Mail Édité": {
-      "main": [
-        [
-          {
-            "node": "B-EDIT-b - TG Nouvelle Version",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D5-Inconnu - PG Insert Ticket": {
-      "main": [
-        [
-          {
-            "node": "D6-Inconnu - TG Alerte Ticket",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D4b - Sub-WF Classifier IA": {
-      "main": [
-        [
-          {
-            "node": "D4c - IF Mail Pertinent",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "D5-Inconnu - PG Insert Ticket",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "D4c - IF Mail Pertinent": {
-      "main": [
-        [
-          {
-            "node": "D5-Inconnu - PG Insert Ticket",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": false,
-    "timeSavedMode": "fixed",
-    "errorWorkflow": "hDI40uwLgepqZbvf",
-    "timezone": "Europe/Paris",
-    "callerPolicy": "workflowsFromSameOwner"
-  },
-  "staticData": {
-    "node:A1 - Cron 9h Ingestion": {
-      "recurrenceRules": []
-    },
-    "node:C1 - Schedule Relances 6j": {
-      "recurrenceRules": [
-        293
-      ]
-    },
-    "node:D1 - Gmail Trigger Réponses": {
+      },
       "D1 - Gmail Trigger Réponses": {
-        "lastTimeChecked": 1792646003,
-        "possibleDuplicates": [
-          "1a162073d002a64f"
+        "main": [
+          [
+            {
+              "node": "D2 - Code Filtrer Réponses",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D2 - Code Filtrer Réponses": {
+        "main": [
+          [
+            {
+              "node": "D3 - PG Lookup Contact",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D3 - PG Lookup Contact": {
+        "main": [
+          [
+            {
+              "node": "D4 - IF Contact Trouvé",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D4 - IF Contact Trouvé": {
+        "main": [
+          [
+            {
+              "node": "D5-Trouvé - PG Update Réponse",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "D4b - Sub-WF Classifier IA",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D5-Trouvé - PG Update Réponse": {
+        "main": [
+          [
+            {
+              "node": "D6-Trouvé - TG Notif Réponse",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D6-Trouvé - TG Notif Réponse": {
+        "main": [
+          [
+            {
+              "node": "Mark a message as read",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D6-Inconnu - TG Alerte Ticket": {
+        "main": [
+          [
+            {
+              "node": "Mark a message as unread",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-GO-b - Sub-WF Copywriter": {
+        "main": [
+          [
+            {
+              "node": "B-GO-d - PG Save Mail Généré",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "B-GO-Échec - TG Alerte Groq",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-GO-d - PG Save Mail Généré": {
+        "main": [
+          [
+            {
+              "node": "B-GO-e - TG Demande Validation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "B-EDIT-a - PG Update Mail Édité": {
+        "main": [
+          [
+            {
+              "node": "B-EDIT-b - TG Nouvelle Version",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D5-Inconnu - PG Insert Ticket": {
+        "main": [
+          [
+            {
+              "node": "D6-Inconnu - TG Alerte Ticket",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D4b - Sub-WF Classifier IA": {
+        "main": [
+          [
+            {
+              "node": "D4c - IF Mail Pertinent",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "D5-Inconnu - PG Insert Ticket",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "D4c - IF Mail Pertinent": {
+        "main": [
+          [
+            {
+              "node": "D5-Inconnu - PG Insert Ticket",
+              "type": "main",
+              "index": 0
+            }
+          ]
         ]
       }
-    }
-  },
-  "meta": {
-    "templateCredsSetupCompleted": true
-  },
-  "nodeGroups": [],
-  "pinData": {},
-  "versionId": "2441b335-c0af-4b84-b40b-0eb3aed821cb",
-  "activeVersionId": "2441b335-c0af-4b84-b40b-0eb3aed821cb",
-  "versionCounter": 125,
-  "triggerCount": 4,
-  "sourceWorkflowId": null,
-  "tags": [],
-  "shared": [
-    {
-      "updatedAt": "2026-06-27T08:44:51.177Z",
-      "createdAt": "2026-06-27T08:44:51.177Z",
-      "role": "workflow:owner",
-      "workflowId": "R86QPwAkWDQnoUFR",
-      "projectId": "w7c99tVjukqkHylY",
-      "project": {
-        "updatedAt": "2026-06-15T15:21:45.928Z",
-        "createdAt": "2026-06-15T15:15:58.665Z",
-        "id": "w7c99tVjukqkHylY",
-        "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
-        "type": "personal",
-        "icon": null,
-        "description": null,
-        "customTelemetryTags": [],
-        "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false,
+      "timeSavedMode": "fixed",
+      "errorWorkflow": "hDI40uwLgepqZbvf",
+      "timezone": "Europe/Paris",
+      "callerPolicy": "workflowsFromSameOwner"
+    },
+    "staticData": {
+      "node:A1 - Cron 9h Ingestion": {
+        "recurrenceRules": []
+      },
+      "node:C1 - Schedule Relances 6j": {
+        "recurrenceRules": [
+          293
+        ]
+      },
+      "node:D1 - Gmail Trigger Réponses": {
+        "D1 - Gmail Trigger Réponses": {
+          "lastTimeChecked": 1792646003,
+          "possibleDuplicates": [
+            "1a162073d002a64f"
+          ]
+        }
       }
+    },
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "b7f4813c-6b71-4dd5-997f-ed798ffeaff8",
+    "activeVersionId": "b7f4813c-6b71-4dd5-997f-ed798ffeaff8",
+    "versionCounter": 138,
+    "triggerCount": 4,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-06-27T08:44:51.177Z",
+        "createdAt": "2026-06-27T08:44:51.177Z",
+        "role": "workflow:owner",
+        "workflowId": "R86QPwAkWDQnoUFR",
+        "projectId": "w7c99tVjukqkHylY",
+        "project": {
+          "updatedAt": "2026-06-15T15:21:45.928Z",
+          "createdAt": "2026-06-15T15:15:58.665Z",
+          "id": "w7c99tVjukqkHylY",
+          "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": "Version b7f4813c",
+      "description": ""
     }
-  ],
-  "versionMetadata": {
-    "name": "Version 2441b335",
-    "description": ""
   }
-}
+]
