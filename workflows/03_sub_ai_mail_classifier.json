@@ -1,192 +1,72 @@
-[
+{
+ "id": "DWZe22zpvGRMiwdM",
+ "name": "Sub-AI-Mail-Classifier",
+ "nodes": [
   {
-    "updatedAt": "2026-10-22T12:14:01.449Z",
-    "createdAt": "2026-10-20T13:27:05.329Z",
-    "id": "DWZe22zpvGRMiwdM",
-    "name": "Sub-AI-Mail-Classifier",
-    "description": null,
-    "active": true,
-    "isArchived": false,
-    "nodes": [
-      {
-        "parameters": {
-          "workflowInputs": {
-            "values": [
-              {
-                "name": "from_header"
-              },
-              {
-                "name": "prospect_email"
-              },
-              {
-                "name": "subject"
-              },
-              {
-                "name": "body"
-              }
-            ]
-          }
-        },
-        "id": "4ea9cb37-8914-45e2-a7ff-4a0a7a4611a5",
-        "name": "K0 - Entrée Mail",
-        "type": "n8n-nodes-base.executeWorkflowTrigger",
-        "typeVersion": 1.1,
-        "position": [
-          0,
-          0
-        ]
-      },
-      {
-        "parameters": {
-          "jsCode": "const m = $input.first().json;\nconst body = (m.body || '').slice(0, 4000);\n\nconst system = `Tu es l'assistant de tri de la boîte mail de l'équipe Partenariats de la Liste BDE ESSEC (association étudiante).\nTa mission : décider si un mail entrant mérite d'être traité par l'équipe.\n\nPERTINENT (pertinent = true) :\n- proposition ou réponse concernant un partenariat, sponsoring, dotation, mécénat, collaboration avec une marque ou une entreprise\n- demande d'information sur le BDE, ses événements, sa liste, sa visibilité\n- organisation d'un événement, d'un échange, d'un rendez-vous avec l'équipe\n- tout message écrit par une vraie personne qui s'adresse au BDE\n\nNON PERTINENT (pertinent = false) :\n- newsletters, publicités, promotions de masse\n- notifications automatiques (Google, réseaux sociaux, outils SaaS, factures, sécurité de compte)\n- spam, phishing, arnaques\n- messages sans aucun rapport avec le BDE\n\nEn cas de doute, réponds pertinent = true : il vaut mieux un ticket de trop qu'un partenaire perdu.\n\nRéponds UNIQUEMENT avec un objet JSON, sans texte autour, au format exact :\n{\"pertinent\": true, \"categorie\": \"partenariat\", \"raison\": \"phrase courte en français\"}\nValeurs possibles pour categorie : partenariat, sponsoring, evenement, question_bde, autre_pertinent, newsletter, publicite, notification, spam, hors_sujet.`;\n\nconst user = `Expéditeur : ${m.from_header || m.prospect_email || 'inconnu'}\nSujet : ${m.subject || '(sans sujet)'}\nCorps :\n${body || '(vide)'}`;\n\nreturn [{\n  json: {\n    ...m,\n    groq_body: {\n      model: 'openai/gpt-oss-20b',\n      reasoning_effort: 'low',\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: user }\n      ],\n      temperature: 0.1,\n      max_tokens: 1000\n    }\n  }\n}];"
-        },
-        "id": "1cfde882-51b6-4cfc-96ef-2b55ea1269b2",
-        "name": "K1 - Code Build Prompt",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          256,
-          0
-        ]
-      },
-      {
-        "parameters": {
-          "method": "POST",
-          "url": "https://api.groq.com/openai/v1/chat/completions",
-          "authentication": "genericCredentialType",
-          "genericAuthType": "httpHeaderAuth",
-          "sendHeaders": true,
-          "headerParameters": {
-            "parameters": [
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              }
-            ]
-          },
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify($json.groq_body) }}",
-          "options": {
-            "timeout": 30000
-          }
-        },
-        "id": "5ba8d001-1340-4671-bcab-4e61fed629b3",
-        "name": "K2 - Groq Classification",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
-        "position": [
-          512,
-          0
-        ],
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 2000,
-        "credentials": {
-          "httpHeaderAuth": {
-            "id": "RWkmbnavwTKWq86T",
-            "name": "Header Auth account"
-          }
-        }
-      },
-      {
-        "parameters": {
-          "jsCode": "const resp = $input.first().json;\nconst mail = $('K0 - Entrée Mail').first().json;\n\nlet result = { pertinent: true, categorie: 'non_classe', raison: 'Classification impossible, ticket créé par précaution' };\n\ntry {\n  const content = resp.choices[0].message.content || '';\n  const match = content.match(/\\{[\\s\\S]*\\}/);   // extrait le JSON même si le modèle ajoute du texte\n  if (match) {\n    const parsed = JSON.parse(match[0]);\n    result = {\n      pertinent: parsed.pertinent === true || parsed.pertinent === 'true',\n      categorie: String(parsed.categorie || 'non_classe'),\n      raison: String(parsed.raison || '')\n    };\n  }\n} catch (e) {\n  // on garde le résultat par défaut (pertinent = true)\n}\n\nreturn [{\n  json: {\n    ...result,\n    prospect_email: mail.prospect_email,\n    subject: mail.subject\n  }\n}];"
-        },
-        "id": "3716fd70-788a-461e-9a70-5937d35992c2",
-        "name": "K3 - Code Parse Verdict",
-        "type": "n8n-nodes-base.code",
-        "typeVersion": 2,
-        "position": [
-          768,
-          0
-        ]
-      }
-    ],
-    "connections": {
-      "K0 - Entrée Mail": {
-        "main": [
-          [
-            {
-              "node": "K1 - Code Build Prompt",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "K1 - Code Build Prompt": {
-        "main": [
-          [
-            {
-              "node": "K2 - Groq Classification",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
-      "K2 - Groq Classification": {
-        "main": [
-          [
-            {
-              "node": "K3 - Code Parse Verdict",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      }
-    },
-    "settings": {
-      "executionOrder": "v1",
-      "binaryMode": "separate",
-      "availableInMCP": false
-    },
-    "staticData": null,
-    "meta": null,
-    "nodeGroups": [],
-    "pinData": {
-      "K0 - Entrée Mail": [
-        {
-          "json": {
-            "from_header": "Marie Durand <marie.durand@redbull.com>",
-            "prospect_email": "marie.durand@redbull.com",
-            "subject": "Partenariat soirée d'intégration",
-            "body": "Bonjour, nous avons vu votre liste BDE et serions intéressés par une dotation de boissons pour votre soirée d'intégration. Pouvons-nous en discuter ? Marie"
-          }
-        }
-      ]
-    },
-    "versionId": "5bd96b69-9b38-480a-bc85-39d9397706a0",
-    "activeVersionId": "5bd96b69-9b38-480a-bc85-39d9397706a0",
-    "versionCounter": 1,
-    "triggerCount": 0,
-    "sourceWorkflowId": null,
-    "tags": [],
-    "shared": [
-      {
-        "updatedAt": "2026-10-20T13:27:05.338Z",
-        "createdAt": "2026-10-20T13:27:05.338Z",
-        "role": "workflow:owner",
-        "workflowId": "DWZe22zpvGRMiwdM",
-        "projectId": "w7c99tVjukqkHylY",
-        "project": {
-          "updatedAt": "2026-06-15T15:21:45.928Z",
-          "createdAt": "2026-06-15T15:15:58.665Z",
-          "id": "w7c99tVjukqkHylY",
-          "name": "Edouard SOUIED <edouard.souied@student-cs.fr>",
-          "type": "personal",
-          "icon": null,
-          "description": null,
-          "customTelemetryTags": [],
-          "creatorId": "5e75bb0f-4298-4cfe-929b-72c141961485"
-        }
-      }
-    ],
-    "versionMetadata": {
-      "name": "Version 5bd96b69",
-      "description": ""
-    }
+   "parameters": {"inputSource": "workflowInputs", "workflowInputs": {"values": [{"name": "from_header", "type": "string"}, {"name": "prospect_email", "type": "string"}, {"name": "subject", "type": "string"}, {"name": "body", "type": "string"}]}},
+   "id": "3588febe-fe7b-42f3-8d43-901c2744f28d",
+   "name": "K0 - Entrée Mail",
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.1,
+   "position": [0, 0]
+  },
+  {
+   "parameters": {
+    "promptType": "define",
+    "text": "=Expéditeur : {{ $json.from_header || $json.prospect_email || 'inconnu' }}\nSujet : {{ $json.subject || '(sans sujet)' }}\nCorps :\n{{ ($json.body || '(vide)').slice(0, 4000) }}",
+    "hasOutputParser": true,
+    "messages": {"messageValues": [{"type": "SystemMessagePromptTemplate", "message": "Tu es l'assistant de tri de la boîte mail de l'équipe Partenariats de la Liste BDE ESSEC (association étudiante).\nTa mission : décider si un mail entrant mérite d'être traité par l'équipe.\n\nPERTINENT (pertinent = true) :\n- proposition ou réponse concernant un partenariat, sponsoring, dotation, mécénat, collaboration avec une marque ou une entreprise\n- demande d'information sur le BDE, ses événements, sa liste, sa visibilité\n- organisation d'un événement, d'un échange ou d'un rendez-vous avec l'équipe\n- tout message écrit par une vraie personne qui s'adresse au BDE\n\nNON PERTINENT (pertinent = false) :\n- newsletters, publicités, promotions de masse\n- notifications automatiques (Google, réseaux sociaux, outils SaaS, factures, sécurité de compte)\n- spam, phishing, arnaques\n- messages sans aucun rapport avec le BDE\n\nEn cas de doute, réponds pertinent = true : il vaut mieux un ticket de trop qu'un partenaire perdu.\nLa raison doit être une phrase courte en français."}]}
+   },
+   "id": "b822d5fa-c227-47fd-8bdc-4dc60abb5a74",
+   "name": "K1 - LLM Chain Classification",
+   "type": "@n8n/n8n-nodes-langchain.chainLlm",
+   "typeVersion": 1.5,
+   "position": [280, 0],
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {"model": "openai/gpt-oss-20b", "options": {"temperature": 0.1, "maxTokensToSample": 1000}},
+   "id": "cedd762e-241e-4dac-b195-ef7140eee6dc",
+   "name": "K1a - Groq Chat Model",
+   "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+   "typeVersion": 1,
+   "position": [200, 220]
+  },
+  {
+   "parameters": {"schemaType": "manual", "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"pertinent\": {\"type\": \"boolean\", \"description\": \"true si le mail concerne le BDE ou un partenariat\"},\n    \"categorie\": {\"type\": \"string\", \"enum\": [\"partenariat\", \"sponsoring\", \"evenement\", \"question_bde\", \"autre_pertinent\", \"newsletter\", \"publicite\", \"notification\", \"spam\", \"hors_sujet\"]},\n    \"raison\": {\"type\": \"string\", \"description\": \"phrase courte en français\"}\n  },\n  \"required\": [\"pertinent\", \"categorie\", \"raison\"]\n}"},
+   "id": "fb6ea9fc-5c56-4b74-b471-f68d3fd63fec",
+   "name": "K1b - Structured Output Parser",
+   "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+   "typeVersion": 1.2,
+   "position": [400, 220]
+  },
+  {
+   "parameters": {"jsCode": "// Sortie validée par le Structured Output Parser\nconst o = $input.first().json.output || {};\nconst mail = $('K0 - Entrée Mail').first().json;\nreturn [{\n  json: {\n    pertinent: o.pertinent === true,\n    categorie: String(o.categorie || 'non_classe'),\n    raison: String(o.raison || ''),\n    prospect_email: mail.prospect_email,\n    subject: mail.subject,\n    validated: true\n  }\n}];"},
+   "id": "fed57a10-6816-423e-84a6-a761ff2f6f02",
+   "name": "K2 - Code Verdict Validé",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [640, -80]
+  },
+  {
+   "parameters": {"jsCode": "// Fallback : IA indisponible ou sortie non conforme au schéma -> ticket par précaution (fail-open)\nconst mail = $('K0 - Entrée Mail').first().json;\nreturn [{\n  json: {\n    pertinent: true,\n    categorie: 'non_classe',\n    raison: 'Classification IA impossible, ticket créé par précaution',\n    prospect_email: mail.prospect_email,\n    subject: mail.subject,\n    validated: false\n  }\n}];"},
+   "id": "382a5e4a-ddf7-4b51-9d89-e5138a9e11e0",
+   "name": "K2-Fallback - Ticket par précaution",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [640, 120]
   }
-]
+ ],
+ "connections": {
+  "K0 - Entrée Mail": {"main": [[{"node": "K1 - LLM Chain Classification", "type": "main", "index": 0}]]},
+  "K1a - Groq Chat Model": {"ai_languageModel": [[{"node": "K1 - LLM Chain Classification", "type": "ai_languageModel", "index": 0}]]},
+  "K1b - Structured Output Parser": {"ai_outputParser": [[{"node": "K1 - LLM Chain Classification", "type": "ai_outputParser", "index": 0}]]},
+  "K1 - LLM Chain Classification": {"main": [[{"node": "K2 - Code Verdict Validé", "type": "main", "index": 0}], [{"node": "K2-Fallback - Ticket par précaution", "type": "main", "index": 0}]]}
+ },
+ "settings": {"executionOrder": "v1", "callerPolicy": "workflowsFromSameOwner"},
+ "pinData": {"K0 - Entrée Mail": [{"from_header": "Marie Durand <marie.durand@redbull.com>", "prospect_email": "marie.durand@redbull.com", "subject": "Partenariat soirée d'intégration", "body": "Bonjour, nous avons vu votre liste BDE et serions intéressés par une dotation de boissons pour votre soirée d'intégration. Pouvons-nous en discuter ? Marie"}]},
+ "active": false
+}
